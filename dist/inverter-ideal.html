@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#132924">
+  <meta name="description" content="有源逆变波形实验室。保留单相全控桥、三相半波或三相全控桥的原电路参数，观察理想瞬时换相、电压电流与能量回馈。">
+  <title>波形实验室 · 有源逆变</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23132924'/%3E%3Cpath d='M8 34h7l8-16 12 30 9-20 5 6h7' fill='none' stroke='%23b4efd4' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./inverter.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body data-mode="inverter">
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="波形实验室首页"><span class="brand-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17h5l4-10 6 18 5-12 3 4h3"/></svg></span><span>波形实验室<small>WAVEFORM LAB</small></span></a>
+    <div class="top-right"><span class="status-dot"></span><span class="model-label">理想电路 · 交互演示</span><button class="help-button" id="help" aria-label="查看使用说明">使用说明 <span>↗</span></button></div>
+  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="side-kicker">实验目录 <span>01 — 06</span></div>
+      <div class="section-label"><span>DC</span><span class="arrow">→</span><span>AC</span><b>有源逆变</b></div>
+      <nav id="circuit-nav" aria-label="选择逆变电路"></nav>
+      <div class="inverter-entry"><a class="nav-item" href="./inverter.html"><span class="nav-number">06</span><span class="nav-copy">换相重叠实验<small>三种电路 · 交流侧电感</small></span><span>↗</span></a></div>
+      <div class="sidebar-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l4-8 4 8 4-8 4 8M4 21h16"/></svg><strong>看见变化，理解原理。</strong><p>从触发时刻到电流路径，把电路和波形连在一起。</p><span>电力电子 · 学习工具</span></div>
+    </aside>
+    <main>
+      <div class="page-heading"><div><div class="eyebrow">POWER ELECTRONICS / 01</div><h1>有源逆变，保留原电路。</h1><p>直流侧向交流电网回馈，原参数与电路类型保持一致。</p></div><span class="chapter-chip">DC → AC <span>理想瞬时换相</span></span></div>
+      <p class="mode-status" id="mode-status" role="status" aria-live="polite">正在计算逆变状态…</p>
+      <a id="rectifier-return" class="mode-return" href="./">返回整流 · 保留参数 →</a>
+      <label class="mobile-picker">选择电路<select id="mobile-circuit" aria-label="选择逆变电路"></select></label>
+      <a class="inverter-mobile-entry" href="./inverter.html">三种电路 · 换相重叠实验 <span>L_B / β / γ ↗</span></a>
+      <section class="experiment-heading"><div><span class="experiment-index" id="exp-index">02</span><div><h2 id="circuit-title">单相桥式全控整流</h2><p id="circuit-sub">4 个晶闸管 · 双脉波</p></div></div><button class="text-button" id="reset">↺ 重置参数</button></section>
+      <div class="workspace-grid">
+        <div class="wave-column">
+          <section class="wave-panel" aria-label="交互波形">
+            <div class="wave-top"><div><span class="live-dot"></span><h3>课本式波形</h3><span class="wave-sub">多行共用 ωt 横轴</span></div><div class="segmented dark" id="cycles-control" aria-label="显示周期数"><button data-cycles="1" aria-pressed="false">1 周期</button><button data-cycles="2" class="selected" aria-pressed="true">2 周期</button></div></div>
+            <div class="wave-legend"><button class="legend-item" data-trace="source" aria-pressed="true"><i class="line-source"></i><span id="source-legend">交流参考 u₂</span></button><button class="legend-item" data-trace="ud" aria-pressed="true"><i class="line-ud"></i><span>输出 <span class="math-inline">u<sub>d</sub></span></span></button><button class="legend-item" data-trace="average" aria-pressed="true"><i class="line-avg"></i><span>平均 <span class="math-inline">U<sub>d</sub></span></span></button><select id="reference" aria-label="交流参考电压类型"><option value="phase">相电压</option><option value="line">线电压</option></select></div>
+            <div class="chart-wrap"><canvas id="wave-canvas" role="img" aria-label="整流电压、电流和触发脉冲波形。移动鼠标或拖动下方时间滑块查看瞬时值。"></canvas></div>
+            <div class="wave-bottom"><div class="current-legend"><button class="legend-item" data-trace="id" aria-pressed="true"><i class="line-id"></i><span>负载 <span class="math-inline">i<sub>d</sub></span></span></button><button class="legend-item" data-trace="ivt1" aria-pressed="true"><i class="line-vt"></i><span>器件 <span class="math-inline">i<sub>VT1</sub></span></span></button><button class="legend-item" data-trace="input" aria-pressed="false"><i class="line-in"></i><span id="input-legend">输入 <span class="math-inline">i<sub>2</sub></span></span></button></div><button class="axis-button" id="axis" title="切换横轴为时间">ωt / ° ⇄</button></div>
+            <div class="playback"><button class="play-button" id="play" aria-label="播放波形导通过程"><span id="play-icon">▶</span><span id="play-text">播放</span></button><input id="cursor" type="range" min="0" max="360" step="0.1" value="120" aria-label="选择观察时刻"><output id="cursor-value">120.0°</output><button id="step" class="step-button" title="前进到下一个触发时刻" aria-label="前进到下一个触发时刻">▸|</button></div>
+            <div class="wave-caption"><span id="wave-model-note">蓝色实线为实际波形，灰色虚线为参考</span><span id="slow-label">慢放 · 1 周期 / 4 秒</span></div>
+          </section>
+          <div class="metrics" aria-label="计算结果">
+            <article><span>平均输出电压</span><div><b id="metric-ud">0.0</b><small>V</small></div><p><span class="math-inline">U<sub>d</sub></span> · 一个周期的平均值</p></article>
+            <article><span>平均负载电流</span><div><b id="metric-id">0.00</b><small>A</small></div><p id="metric-id-note"><span class="math-inline">I<sub>d</sub></span> = <span class="math-inline">U<sub>d</sub></span> / R</p></article>
+            <article><span>输出电压有效值</span><div><b id="metric-rms">0.0</b><small>V</small></div><p><span class="math-inline">U<sub>d,rms</sub></span> · 包含脉动分量</p></article>
+            <article><span>脉波频率</span><div><b id="metric-ripple">100</b><small>Hz</small></div><p id="ripple-note">每周期 2 个输出脉波</p></article>
+          </div>
+          <section class="explanation-panel"><div class="explanation-title"><span class="book-icon">↳</span><h3>读懂这一组波形</h3><span id="conduction-mode">连续电流</span></div><div class="formula" id="formula"></div><p id="explanation-one"></p><p id="explanation-two"></p><details><summary>模型条件与符号约定</summary><div class="assumptions"><p>u 表示瞬时值，U 表示平均值或有效值；U₂ 始终表示交流输入有效值，三相电路中为相电压有效值，线电压有效值为 √3U₂。</p><p>器件理想、三相平衡，忽略器件压降、变压器漏感与换相重叠。R 为纯电阻；RL 为电阻与有限电感串联；RLE 再串联一个恒定反电动势 E，E 的正方向阻碍正向负载电流。RLE 的 L 可设为 0，得到 RE 负载。</p><p>阻感与带反电动势模式计算稳态电流，不预先假定电流连续。导通期间按 L di_d/dt + R i_d + E = u_d 积分；电流降到零后器件关断。RLE 断流区的整个负载端电压为 E，而非零。</p><p>只有满足正向电压条件并有门极脉冲时，晶闸管才能开通；门极脉冲结束不代表立即关断。脉冲宽度可调；三相全控桥对每只晶闸管施加相隔 60° 的两次脉冲。RLE 中脉冲太早或太窄，可能无法导通。</p><p>u_d1 和 u_d2 为正、负直流母线相对交流中性点的电位，u_d = u_d1 − u_d2。桥式电路断流时，浮置节点对交流中性点的电位不能由理想模型唯一确定，因此相关母线电位及 u_VT1 留空。</p><p>有限电感模式以 0.05° 的时间步长、指数积分与电流过零处理求周期稳态。E 的可调范围为 −1000～1000 V。图中 E 的极性为参考正方向：E &gt; 0 阻碍正向电流，E &lt; 0 表示实际极性相反，沿正向电流方向提供电压。本页面采用理想瞬时换相，交流侧电感 L_B = 0，换相重叠角 γ = 0。逆变角 β = 180° − α，换相结束后的反向电压区间为 β − γ。若要观察 L_B 引起的重叠与换相失败，请进入独立的“有源逆变”实验。未模拟器件恢复时间。断续电流的熄灭角另记为 β_e，避免与逆变角 β 混淆。</p><p class="reference-link">参考学习材料：<a href="https://inj.atu.edu.iq/wp-content/uploads/2024/07/Power-electronic-lectures.pdf" target="_blank" rel="noopener noreferrer">Al-Furat Al-Awsat Technical University · Power Electronic ↗</a></p></div></details></section>
+        </div>
+        <div class="inspector-column">
+          <section class="parameter-panel"><div class="panel-heading"><h3>实验参数</h3><span>实时计算</span></div><label class="field-label" for="load">负载类型</label><div class="select-wrap"><select id="load"><option value="r" selected>R · 电阻负载</option><option value="rl">RL · 阻感负载</option><option value="rle">RLE · 带反电动势负载</option></select></div>
+            <div class="alpha-heading"><label for="alpha">触发角 <span>α</span></label><div><input id="alpha-number" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" min="0" max="89" step="1" value="30" aria-label="触发角数值"><span>°</span></div></div><input id="alpha" class="alpha-range" type="range" min="0" max="89" step="1" value="30" aria-label="触发角"><div class="range-labels"><span>0°</span><span id="alpha-range-mid">45°</span><span id="alpha-range-max">89°</span></div><div class="presets" id="presets"></div><p class="parameter-hint" id="alpha-hint"></p><div id="angle-readouts" class="angle-readouts" aria-label="逆变与关断角度" hidden><div><span>逆变角 β</span><output id="angle-beta">—</output></div><div><span>换相重叠角 γ</span><output id="angle-gamma">—</output></div></div><p class="input-hint angle-note" id="angle-note" hidden></p>
+            <div class="parameter-divider"></div><div class="number-fields"><label>输入有效值 U₂<div><input id="u2" type="number" min="1" max="1000" step="1" value="100" inputmode="decimal" enterkeyhint="done"><span>V</span></div></label><label>负载电阻 R<div><input id="resistance" type="number" min="0.1" max="10000" step="0.1" value="20" inputmode="decimal" enterkeyhint="done"><span>Ω</span></div></label></div>
+            <div class="number-fields load-fields" id="load-fields" hidden><label>负载电感 L<div><input id="inductance" type="number" min="0.1" max="2000" step="0.1" value="100" inputmode="decimal" enterkeyhint="done"><span>mH</span></div></label><label id="emf-field" hidden>反电动势 E<div><input id="emf" type="text" min="-1000" autocomplete="off" aria-describedby="load-hint" max="1000" step="1" value="50" inputmode="decimal" enterkeyhint="done"><span>V</span></div></label></div><p class="input-hint load-hint" id="load-hint" hidden></p>
+            <label class="frequency-field" id="pulse-field" for="pulse-width" hidden><span>触发脉冲宽度 δ</span><span class="compact-number"><input id="pulse-width" type="number" min="1" max="60" step="1" value="10" inputmode="numeric" enterkeyhint="done"><span>°</span></span></label>
+            <label class="frequency-field" for="frequency"><span>电源频率 f</span><select id="frequency"><option value="50">50 Hz</option><option value="60">60 Hz</option></select></label><p class="input-hint" id="input-hint">U₂ 为交流电压有效值，峰值为 √2U₂。</p>
+          </section>
+          <section class="circuit-panel"><div class="panel-heading"><h3>主电路</h3><span class="green-badge">联动</span></div><div id="circuit-diagram" aria-label="主电路及当前导通路径"></div><div class="circuit-key"><span><i></i> 当前导通路径</span><span>VT：晶闸管</span></div><div class="instant-state"><span>观察时刻 <b id="instant-angle">120.0°</b></span><strong id="active-valves">VT1 + VT2 导通</strong><p id="instant-source"><span class="math-inline">u<sub>d</sub></span> = <span class="math-inline">u<sub>2</sub></span></p><div><span><span class="math-inline">u<sub>d</sub></span> <b id="instant-ud">0.0 V</b></span><span><span class="math-inline">i<sub>VT1</sub></span> <b id="instant-i">0.00 A</b></span></div></div></section>
+          <button class="export-button" id="export"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></svg>保存当前波形图 <span>PNG ↗</span></button>
+        </div>
+      </div>
+      <footer><span class="footer-mark">∿</span><span>WAVEFORM LAB</span><span>从电路出发，用波形理解。</span><span class="footer-version">有源逆变 · 原电路参数</span></footer>
+    </main>
+  </div>
+  <div id="input-toolbar" class="input-toolbar" role="group" aria-label="数字输入操作" hidden><span id="input-toolbar-label">输入参数</span><button id="input-sign" type="button" aria-label="切换反电动势正负值" hidden>± 正负</button><button id="input-done" type="button">完成</button></div>
+  <dialog id="help-dialog"><button id="close-help" class="close-dialog" aria-label="关闭说明">×</button><div class="eyebrow">QUICK START</div><h2>三步，看懂一组波形。</h2><ol><li><b>选择电路与负载</b><p>比较 R、RL 与 RLE。阻感模式可调 L，带反电动势模式可调 L 和 E。</p></li><li><b>调节触发角 α</b><p>观察脉冲位置、电压和电流。若 RLE 未导通，检查电源是否能克服 E，或增大脉冲宽度。</p></li><li><b>沿时间轴观察</b><p>拖动时间轴或点击播放，主电路会高亮此刻导通的器件。</p></li></ol><p class="dialog-note">三相的 α 从自然换相点计算，VT1 对应 30° + α。波形负值、平均电压和有效值是不同概念；图中的平均线表示一个周期内的平均输出电压。</p><button id="start-learning" class="primary-button">开始观察 →</button></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
