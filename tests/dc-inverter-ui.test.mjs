@@ -10,7 +10,7 @@ async function app(search,fn){
   class Element{
     set value(v){this._value=String(v);}get value(){return this._value??'';}
     constructor(id='',attrs={}){this.id=id;this.attrs=attrs;this.dataset={};for(const [key,v]of Object.entries(attrs))if(key.startsWith('data-'))this.dataset[key.slice(5)]=v;this.value=attrs.value??'';this.checked='checked' in attrs;this.hidden='hidden' in attrs;this.style={};this.listeners={};this.children=[];this.clientWidth=360;this.classList={add(){},remove(){},toggle(){}};}
-    set innerHTML(value){this.html=value;this.children=[];for(const m of value.matchAll(/<(?:input|button|select)\b([^>]*)>/g)){const attrs=Object.fromEntries([...m[1].matchAll(/([\w-]+)(?:="([^"]*)")?/g)].map(x=>[x[1],x[2]??'']));const e=new Element(attrs.id??'',attrs);this.children.push(e);if(e.id)all.set(e.id,e);}}
+    set innerHTML(value){this.htmlWrites=(this.htmlWrites??0)+1;this.html=value;this.children=[];for(const m of value.matchAll(/<(?:input|button|select)\b([^>]*)>/g)){const attrs=Object.fromEntries([...m[1].matchAll(/([\w-]+)(?:="([^"]*)")?/g)].map(x=>[x[1],x[2]??'']));const e=new Element(attrs.id??'',attrs);this.children.push(e);if(e.id)all.set(e.id,e);}}
     get innerHTML(){return this.html??'';}
     querySelectorAll(selector){const key=selector.match(/^\[data-(.*)\]$/)?.[1];return this.children.filter(e=>key in e.dataset);}
     addEventListener(type,fn){(this.listeners[type]??=[]).push(fn);}
@@ -111,4 +111,19 @@ test('Every existing application page has an explicit new inverter entry without
     const html=fs.readFileSync(new URL('../dist/'+name,import.meta.url),'utf8');assert.ok(html.includes('href="./dc-inverter.html"'));
   }
   const html=fs.readFileSync(new URL('../dist/dc-inverter.html',import.meta.url),'utf8');assert.ok(html.includes('href="./inverter.html"'));assert.ok(!html.includes('manifest.webmanifest'));
+});
+test('Current flow stays alive between probe updates, can be hidden and follows the zoomed diagram',async()=>{
+  await app('?circuit=full&l=0',async({get,history})=>{
+    const diagram=get('dc-diagram'),initialWrites=diagram.htmlWrites;
+    assert.ok(get('dc-show-flow').checked);assert.ok(diagram.innerHTML.includes('animateMotion'));
+    get('dc-cursor').value=50;get('dc-cursor').dispatch('input');assert.equal(diagram.htmlWrites,initialWrites);
+    get('dc-cursor').value=190;get('dc-cursor').dispatch('input');assert.equal(diagram.htmlWrites,initialWrites+1);
+    get('dc-zoom').click();assert.equal(get('dc-zoom-diagram').innerHTML,diagram.innerHTML);
+    get('dc-show-flow').checked=false;get('dc-show-flow').dispatch('change');
+    assert.ok(!diagram.innerHTML.includes('animateMotion'));assert.equal(get('dc-zoom-diagram').innerHTML,diagram.innerHTML);
+    assert.ok(history.at(-1).includes('flow=0'));
+  });
+  await app('?circuit=full&flow=0',async({get})=>{
+    assert.equal(get('dc-show-flow').checked,false);assert.ok(!get('dc-diagram').innerHTML.includes('animateMotion'));
+  });
 });
