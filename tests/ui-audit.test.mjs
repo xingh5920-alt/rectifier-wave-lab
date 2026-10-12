@@ -8,7 +8,7 @@ import {stateUrl} from '../dist/mode-transfer.js';
 let run=0;
 async function page(name,search,fn){
  const saved=new Map(['window','document','ResizeObserver','requestAnimationFrame','setTimeout','clearTimeout'].map(k=>[k,globalThis[k]]));
- const elements=new Map(),timers=new Map(),navigations=[],history=[];let now=0,nextTimer=0;
+ const elements=new Map(),timers=new Map(),navigations=[],history=[],frames=[];let now=0,nextTimer=0;
  class Element{
   constructor(id=''){this.id=id;this.dataset={};this.attrs={};this.style={setProperty(){}};this.listeners={};this.clientWidth=700;this._value='';this.hidden=false;this.disabled=false;this.children=[];this.classList={toggle(){},add(){},remove(){}};}
   set value(v){this._value=String(v)}get value(){return this._value}
@@ -33,16 +33,46 @@ async function page(name,search,fn){
  const doc=Object.assign(new Element(),{body:new Element(),documentElement:new Element(),getElementById:id=>elements.get(id),createElement:tag=>tag==='canvas'?canvas():new Element(),querySelectorAll:s=>s==='[data-circuit]'?elements.get('circuit-nav').children:lists[s.slice(6,-1)]??[]});
  doc.activeElement=doc.body;doc.body.dataset.mode=name==='inverter-ideal'?'inverter':'';
  const win=Object.assign(new Element(),{innerWidth:1024,innerHeight:1000,devicePixelRatio:1,location:{search,assign:u=>navigations.push(u),replace:u=>navigations.push(u)},history:{replaceState:(a,b,u)=>history.push(u)}});
- Object.assign(globalThis,{window:win,document:doc,ResizeObserver:class{observe(){}},requestAnimationFrame(){},setTimeout:(f,ms)=>{const id=++nextTimer;timers.set(id,{f,at:now+ms});return id},clearTimeout:id=>timers.delete(id)});
+ Object.assign(globalThis,{window:win,document:doc,ResizeObserver:class{observe(){}},requestAnimationFrame:fn=>{frames.push(fn);return frames.length},setTimeout:(f,ms)=>{const id=++nextTimer;timers.set(id,{f,at:now+ms});return id},clearTimeout:id=>timers.delete(id)});
  const clock=ms=>{now+=ms;for(const [id,t] of timers)if(t.at<=now){timers.delete(id);t.f()}};
  try{
   await import('../dist/'+(name==='inverter'?'inverter':'app')+'.js?audit='+ ++run);
   const get=id=>elements.get(id),change=(id,v,type='change')=>{get(id).value=v;get(id).dispatch(type)};
-  await fn({get,change,clock,navigations,history,doc,win,lists});
+  const frame=stamp=>{for(const callback of frames.splice(0))callback(stamp)};
+  await fn({get,change,clock,navigations,history,doc,win,lists,frame});
  }finally{for(const [k,v] of saved)if(v===undefined)delete globalThis[k];else globalThis[k]=v;}
 }
 const params={circuit:'bridge',load:'rle',alpha:120,u2:100,r:20,f:50,l:1000,e:-400,pulseWidth:10};
 const query=(resume=false)=>stateUrl('./',params,{cycles:1,cursor:120},resume).split('?')[1];
+
+test('Active inversion keeps playing during touch scroll, switches to half speed and pauses only for a tap or explicit control',async()=>{
+ await page('inverter','?circuit=threeHalf',async({get,change,frame,doc,history})=>{
+  const play=get('inverter-play'),canvas=get('inverter-canvas');play.click();frame(0);frame(100);
+  const normal=Number(get('inverter-cursor').value);assert.ok(Math.abs(normal-176-7.2)<1e-7);
+  change('inverter-speed','0.5');frame(200);frame(300);const slow=Number(get('inverter-cursor').value);assert.ok(Math.abs(slow-normal-3.6)<1e-7);
+  assert.match(get('inverter-diagram').innerHTML,/dur="2.4s"/);assert.ok(history.at(-1).includes('speed=0.5'));
+  canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:7,clientX:200,clientY:50});
+  canvas.dispatch('pointermove',{pointerType:'touch',pointerId:7,clientX:200,clientY:150});canvas.dispatch('pointercancel');
+  frame(400);assert.equal(play.attrs['aria-pressed'],'true');assert.ok(Number(get('inverter-cursor').value)>slow);
+  canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:8,clientX:200,clientY:50});
+  canvas.dispatch('pointermove',{pointerType:'touch',pointerId:8,clientX:300,clientY:50});canvas.dispatch('pointerup',{pointerType:'touch',pointerId:8,clientX:300,clientY:50});
+  assert.equal(play.attrs['aria-pressed'],'true');
+  get('inv-r').focus();doc.dispatch('pointerdown',{target:canvas});assert.equal(play.attrs['aria-pressed'],'true','Unchanged input blur cannot stop scrolling playback');
+  canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:9,clientX:200,clientY:50});canvas.dispatch('pointerup',{pointerType:'touch',pointerId:9,clientX:200,clientY:50});
+  assert.equal(play.attrs['aria-pressed'],'false');
+  play.click();frame(500);const start=Number(get('inverter-cursor').value);frame(600);
+  assert.ok(Math.abs(Number(get('inverter-cursor').value)-start-3.6)<1e-7,'A stale animation callback cannot create a second playback loop');
+ });
+});
+test('Rectifier and ideal inverter also retain playback while touch-scrolling and expose 0.5x',async()=>{
+ for(const name of ['index','inverter-ideal'])await page(name,name==='index'?'':'?'+query(),async({get,change,frame})=>{
+  get('play').click();frame(0);frame(100);const before=Number(get('cursor').value);
+  change('playback-speed','.5');frame(200);frame(300);assert.ok(Math.abs(Number(get('cursor').value)-before-4.5)<1e-7);
+  get('wave-canvas').dispatch('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:100});
+  get('wave-canvas').dispatch('pointermove',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});get('wave-canvas').dispatch('pointercancel');
+  assert.equal(get('play-text').textContent,'暂停');
+ });
+});
 
 test('Returning to rectification requires an actual parameter edit before automatic re-entry',async()=>{
  await page('index','?'+query(true),async({get,change,clock,navigations})=>{

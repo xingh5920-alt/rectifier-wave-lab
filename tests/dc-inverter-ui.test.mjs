@@ -5,7 +5,7 @@ import fs from 'node:fs';
 let serial=0;
 async function app(search,fn){
   const names=['window','document','ResizeObserver','requestAnimationFrame','setTimeout','clearTimeout'];
-  const old=new Map(names.map(k=>[k,globalThis[k]])),all=new Map();
+  const old=new Map(names.map(k=>[k,globalThis[k]])),all=new Map(),frames=[];
   const context=new Proxy({measureText:t=>({width:String(t).length*7})},{get:(obj,k)=>obj[k]??(()=>{})});
   class Element{
     set value(v){this._value=String(v);}get value(){return this._value??'';}
@@ -29,9 +29,9 @@ async function app(search,fn){
   const presets=[60,90,120,180].map(theta=>new Element('',{'data-theta':String(theta)}));
   const history=[],doc=Object.assign(new Element(),{body:new Element(),getElementById:id=>all.get(id),createElement:()=>new Element(),querySelectorAll:s=>s==='[data-theta]'?presets:[]});doc.activeElement=doc.body;
   const win=Object.assign(new Element(),{innerWidth:390,innerHeight:800,devicePixelRatio:1,location:{search,href:'https://example.test/dc-inverter.html'+search},history:{replaceState:(a,b,url)=>history.push(url)}});
-  Object.assign(globalThis,{document:doc,window:win,ResizeObserver:class{observe(){}},requestAnimationFrame(){},setTimeout(){return 1},clearTimeout(){}});
+  Object.assign(globalThis,{document:doc,window:win,ResizeObserver:class{observe(){}},requestAnimationFrame:fn=>{frames.push(fn);return frames.length},setTimeout(){return 1},clearTimeout(){}});
   const change=(id,value)=>{const e=all.get(id);assert.ok(e,id+' exists');e.value=String(value);e.dispatch('change');};
-  try{await import('../dist/dc-inverter.js?ui='+ ++serial);await fn({get:id=>all.get(id),change,history,presets,doc});}
+  try{await import('../dist/dc-inverter.js?ui='+ ++serial);await fn({get:id=>all.get(id),change,history,presets,doc,frame:stamp=>{for(const callback of frames.splice(0))callback(stamp)}});}
   finally{for(const [k,v]of old)if(v===undefined)delete globalThis[k];else globalThis[k]=v;}
 }
 test('All six topology controls execute the actual UI and retain independent numeric edits',async()=>{
@@ -125,5 +125,17 @@ test('Current flow stays alive between probe updates, can be hidden and follows 
   });
   await app('?circuit=full&flow=0',async({get})=>{
     assert.equal(get('dc-show-flow').checked,false);assert.ok(!get('dc-diagram').innerHTML.includes('animateMotion'));
+  });
+});
+test('DC waveform and particle animations slow together without pausing on a touch scroll',async()=>{
+  await app('?circuit=full&l=0',async({get,change,frame,history})=>{
+    const play=get('dc-play'),canvas=get('dc-canvas');play.click();frame(0);frame(100);
+    const before=Number(get('dc-cursor').value);assert.ok(Math.abs(before-15-9)<1e-7);
+    change('dc-speed','.5');frame(200);frame(300);assert.ok(Math.abs(Number(get('dc-cursor').value)-before-4.5)<1e-7);
+    assert.match(get('dc-diagram').innerHTML,/dur="2.4s"/);assert.ok(history.at(-1).includes('speed=0.5'));
+    canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:100});
+    canvas.dispatch('pointermove',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});canvas.dispatch('pointercancel');
+    assert.equal(play.attrs['aria-pressed'],'true');assert.match(get('dc-motion-state').textContent,/供能/);
+    play.click();assert.equal(play.attrs['aria-pressed'],'false');
   });
 });
