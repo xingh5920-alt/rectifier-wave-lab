@@ -1,3 +1,4 @@
+import {inverterFlowSVG} from './inverter-flow.js';
 import {phaseColors,inverterTopology} from './inverter-topologies.js';
 import {svgNotationMarkup} from './formula-display.js';
 const text=(x,y,value,size=12,color='#728867')=>`<text x="${x}" y="${y}" font-size="${size}" fill="${color}" stroke="none">${svgNotationMarkup(value)}</text>`;
@@ -9,8 +10,8 @@ function load(x,top,bottom,s){
   const color=s.mask?'#477d4d':'#aab69f',ey=bottom-37;
   return `<g stroke="${color}" stroke-width="2"><path d="M${x} ${top}v22m0 36v25m0 26v${ey-14-top-109}m0 28V${bottom}"/><path d="M${x} ${top+22}c-14 0-14 12 0 12c-14 0-14 12 0 12c-14 0-14 12 0 12"/><rect x="${x-8}" y="${top+83}" width="16" height="26"/><circle cx="${x}" cy="${ey}" r="14"/><path d="M${x+40} ${top+24}V${bottom-21}m-4 -6 4 6 4-6"/></g>`+text(x+15,top+46,'L')+text(x+15,top+101,'R')+text(x-5,ey+4,'M')+text(x+16,ey+3,'|E_M|',11)+text(x-26,ey-5,'−',14)+text(x-26,ey+10,'+',14)+text(x+45,(top+bottom)/2,'u_d',11)+text(x+9,top+16,'+',12)+text(x+9,bottom-7,'−',12);
 }
-export function inverterCircuitSvg(s,p){
-  if(p.circuit==='threeHalf')return halfWaveSvg(s);
+export function inverterCircuitSvg(s,p,rate=1){
+  if(p.circuit==='threeHalf')return halfWaveSvg(s).replace('</svg>',inverterFlowSVG(s,p,rate)+'</svg>');
   const topology=inverterTopology(p.circuit);
   let svg=`<svg viewBox="0 0 550 325" role="img" aria-label="${topology.name}有源逆变主电路及当前导通路径"><g fill="none" stroke-linecap="round" stroke-linejoin="round" font-family="system-ui">`;
   const green=s.mask?'#477d4d':'#aab69f';
@@ -29,7 +30,7 @@ export function inverterCircuitSvg(s,p){
     svg+=load(455,39,266,s)+text(31,310,'U_2 为相电压有效值；L_B 为每相电感',11);
   }
   svg+=`<path d="M401 35l7 4-7 4" stroke="${green}" stroke-width="1.6"/>`+text(399,29,'i_d',11,green);
-  return svg+'</g></svg>';
+  return svg+'</g>'+inverterFlowSVG(s,p,rate)+'</svg>';
 }
 function halfWaveSvg(s){
   let svg=`<svg viewBox="0 0 530 310" role="img" aria-label="三相半波有源逆变主电路，a 相红色、b 相绿色、c 相蓝色，当前导通支路加粗"><g fill="none" stroke-linecap="round" stroke-linejoin="round">`;

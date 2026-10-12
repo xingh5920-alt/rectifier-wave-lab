@@ -1,3 +1,4 @@
+import {renderFlowSegments} from './playback.js';
 // Conventional branch currents, not electron motion. Positions follow the circuit SVG.
 const green='#23845a',colours=['#c84a44','#188768','#3979d2'];
 const nz=i=>Number.isFinite(i)&&Math.abs(i)>1e-8;
@@ -70,13 +71,4 @@ export function currentFlowSegments(type,s){
   }
   return segments;
 }
-export function currentFlowSVG(type,s){
-  const paths=currentFlowSegments(type,s).map(({id,points,color})=>{
-    const last=points.at(-1),prev=points.at(-2),dx=last[0]-prev[0],dy=last[1]-prev[1],length=Math.hypot(dx,dy);
-    const still=`translate(${last[0]-dx/length*7} ${last[1]-dy/length*7}) rotate(${Math.atan2(dy,dx)*180/Math.PI})`;
-    const d=points.map(([x,y],k)=>(k?'L':'M')+x+' '+y).join(' ');
-    // Two arrowheads on each existing wire. Never invent a path through an off device.
-    return `<g data-flow="${id}" data-flow-path="${d}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">${[0,.6].map(delay=>`<path class="dc-flow-arrow" d="M-4 -3L1 0L-4 3"><animateMotion path="${d}" dur="1.2s" begin="-${delay}s" repeatCount="indefinite" rotate="auto"/></path>`).join('')}<path class="dc-flow-still" d="M-4 -3L1 0L-4 3" transform="${still}"/></g>`;
-  }).join('');
-  return `<g class="dc-current-flow" pointer-events="none" aria-hidden="true">${paths}</g>`;
-}
+export const currentFlowSVG=(type,s,rate=1)=>renderFlowSegments(currentFlowSegments(type,s),rate);

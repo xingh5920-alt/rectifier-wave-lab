@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./inverter.css">
   <script type="module" src="./app.js"></script>
+  <link rel="stylesheet" href="./playback.css">
 </head>
 <body>
   <header class="topbar">
@@ -39,7 +40,7 @@
             <div class="wave-legend"><button class="legend-item" data-trace="source" aria-pressed="true"><i class="line-source"></i><span id="source-legend">交流参考 u₂</span></button><button class="legend-item" data-trace="ud" aria-pressed="true"><i class="line-ud"></i><span>输出 <span class="math-inline">u<sub>d</sub></span></span></button><button class="legend-item" data-trace="average" aria-pressed="true"><i class="line-avg"></i><span>平均 <span class="math-inline">U<sub>d</sub></span></span></button><select id="reference" aria-label="交流参考电压类型"><option value="phase">相电压</option><option value="line">线电压</option></select></div>
             <div class="chart-wrap"><canvas id="wave-canvas" role="img" aria-label="整流电压、电流和触发脉冲波形。移动鼠标或拖动下方时间滑块查看瞬时值。"></canvas></div>
             <div class="wave-bottom"><div class="current-legend"><button class="legend-item" data-trace="id" aria-pressed="true"><i class="line-id"></i><span>负载 <span class="math-inline">i<sub>d</sub></span></span></button><button class="legend-item" data-trace="ivt1" aria-pressed="true"><i class="line-vt"></i><span>器件 <span class="math-inline">i<sub>VT1</sub></span></span></button><button class="legend-item" data-trace="input" aria-pressed="false"><i class="line-in"></i><span id="input-legend">输入 <span class="math-inline">i<sub>2</sub></span></span></button></div><button class="axis-button" id="axis" title="切换横轴为时间">ωt / ° ⇄</button></div>
-            <div class="playback"><button class="play-button" id="play" aria-label="播放波形导通过程"><span id="play-icon">▶</span><span id="play-text">播放</span></button><input id="cursor" type="range" min="0" max="360" step="0.1" value="120" aria-label="选择观察时刻"><output id="cursor-value">120.0°</output><button id="step" class="step-button" title="前进到下一个触发时刻" aria-label="前进到下一个触发时刻">▸|</button></div>
+            <div class="playback"><button class="play-button" id="play" aria-label="播放波形导通过程"><span id="play-icon">▶</span><span id="play-text">播放</span></button><label class="playback-speed"><small>速度</small><select id="playback-speed" aria-label="播放速度"><option value="0.5">0.5× 慢放</option><option value="1" selected>1×</option></select></label><input id="cursor" type="range" min="0" max="360" step="0.1" value="120" aria-label="选择观察时刻"><output id="cursor-value">120.0°</output><button id="step" class="step-button" title="前进到下一个触发时刻" aria-label="前进到下一个触发时刻">▸|</button></div>
             <div class="wave-caption"><span id="wave-model-note">蓝色实线为实际波形，灰色虚线为参考</span><span id="slow-label">慢放 · 1 周期 / 4 秒</span></div>
           </section>
           <div class="metrics" aria-label="计算结果">

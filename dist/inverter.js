@@ -1,3 +1,4 @@
+import {playbackRate,advancePlayback,bindProbeGestures,syncSvgPlayback,withPlaybackRate} from './playback.js';
 import {simulateInverter,inverterSample,selectedCommutation,commutationMeasurements} from './inverter-model.js';
 import {inverterLayout,drawInverterChart,drawInverterProbe} from './inverter-chart.js';
 import {explanationMarkup} from './formula-display.js';
@@ -9,7 +10,8 @@ const $=id=>document.getElementById(id),canvas=$('inverter-canvas'),ctx=canvas.g
 const transferred=readTransferredState(window.location?.search),imported=inverterParameters(transferred);
 if(transferred&&!imported)window.location.replace(isActiveInversion(transferred.p)?inversionUrl(transferred.p,transferred):stateUrl('./',transferred.p,transferred,true));
 const requested=new URLSearchParams(window.location?.search??'').get('circuit');
-let p=imported?{...inverterPreset(imported.circuit),...imported}:inverterPreset(inverterCircuits.some(c=>c.id===requested)?requested:'threeHalf'),scenario='steady',selectedPreset=imported?'':'normal',inductanceMode=imported?'custom':'large',customInductance=imported?.l??2000,result,layout,baseCanvas,focusedEvent=null,cursor=imported?transferred.cursor:176,range=imported?transferred.cycles*360:window.innerWidth<650?360:720,timeAxis=imported?transferred.timeAxis:false,referenceMode='line',playing=false,lastTime=0,toastTimer;
+let p=imported?{...inverterPreset(imported.circuit),...imported}:inverterPreset(inverterCircuits.some(c=>c.id===requested)?requested:'threeHalf'),scenario='steady',selectedPreset=imported?'':'normal',inductanceMode=imported?'custom':'large',customInductance=imported?.l??2000,result,layout,baseCanvas,focusedEvent=null,cursor=imported?transferred.cursor:176,range=imported?transferred.cycles*360:window.innerWidth<650?360:720,timeAxis=imported?transferred.timeAxis:false,referenceMode='line',playing=false,lastTime=null,toastTimer;
+let speed=playbackRate(new URLSearchParams(window.location?.search).get('speed')),playEpoch=0,diagramMarkup='';
 const circuitStates=new Map();
 if(imported){$('inv-transfer-status').hidden=false;$('inv-transfer-status').textContent=(transferred.lb!==undefined?'已恢复':'已进入')+inverterTopology(p.circuit).name+(transferred.lb!==undefined?'有源逆变，链接中的参数已恢复。':'有源逆变。电路及初始参数来自整流页面；可增加交流侧电感观察换相重叠。');$('inv-rectifier-return').textContent='返回整流实验';}
 const numericFields=new Map([
@@ -83,9 +85,12 @@ function updateProbe(){
   $('inv-probe-note').innerHTML=explanationMarkup($('inv-probe-note').textContent);
   $('inv-probe-ud').textContent=fmt(s.ud)+' V';$('inv-probe-id').textContent=fmt(s.id,2)+' A';
   $('inv-valve-values').innerHTML=Array.from({length:topology.valves},(_,j)=>`<span class="phase-${['a','b','c'][topology.colors[j]]}"><span class="math-inline">i<sub>VT${j+1}</sub></span><b>${fmt(s.currents[j],2)} A</b></span>`).join('');
-  $('inverter-diagram').innerHTML=inverterCircuitSvg(s,p);
-  const view={cycles:range/360,cursor,timeAxis};$('inv-rectifier-return').href=stateUrl('./',{...p,load:'rle'},view,true);
-  window.history?.replaceState(null,'',stateUrl('./inverter.html',{...p,load:'rle'},{...view,lb:p.lb}));draw();
+  const markup=inverterCircuitSvg(s,p,speed);
+  if(markup!==diagramMarkup){$('inverter-diagram').innerHTML=markup;diagramMarkup=markup;}
+  syncSvgPlayback($('inverter-diagram'),playing);
+  $('inv-motion-state').textContent=s.valid===false?'支路分配未确定 · 动画留空':!(s.id>1e-8)?'未导通 · 当前没有流动电流':overlap?'晶闸管换相 · 前后支路正在交接电流':s.ud*s.id<0?'能量回馈 · 直流侧向交流电网送能':Math.abs(s.ud)<1e-8?'电流持续 · 当前输出电压接近零':'瞬时供能 · 交流侧向直流侧送能';
+  const view={cycles:range/360,cursor,timeAxis};$('inv-rectifier-return').href=withPlaybackRate(stateUrl('./',{...p,load:'rle'},view,true),speed);
+  const link=stateUrl('./inverter.html',{...p,load:'rle'},{...view,lb:p.lb});window.history?.replaceState(null,'',withPlaybackRate(link,speed));draw();
 }
 function updateAngleReadouts(){
   const m=commutationMeasurements(focusedEvent),name=focusedEvent?eventName(focusedEvent):'';
@@ -97,11 +102,11 @@ function updateAngleReadouts(){
   $('inv-angle-hint').textContent=!m?'β = 180° − α；没有完整电流交接时不标注 γ。':m.gamma===null?`所选换相在 p = ${fmt(m.p,2)}° 前未完成，γ 不作为有效重叠角显示。`:`γ 对应 ${fmt(m.start,2)}° → ${fmt(m.end,2)}°。n：自然点；g：触发；e：换相结束；p：反压结束。${m.delay>.005?`触发后等待 ${fmt(m.delay,2)}°，可用反压按 p−e 计算。`:''}${m.nonstandard?'异常导通路径的 p 按实际换相电压过零确定。':''}`;
 }
 
-function pause(){playing=false;lastTime=0;$('inverter-play').textContent='▶ 播放';$('inverter-play').setAttribute('aria-label','播放导通过程');}
-function animate(now){if(!playing)return;if(lastTime){cursor=(cursor+Math.min(100,now-lastTime)*360/5000)%range;updateProbe();}lastTime=now;requestAnimationFrame(animate);}
+function pause(){playing=false;playEpoch++;lastTime=null;$('inverter-play').textContent='▶ 播放';$('inverter-play').setAttribute('aria-label','播放导通过程');$('inverter-play').setAttribute('aria-pressed','false');syncSvgPlayback($('inverter-diagram'),false);}
+function animate(now,epoch){if(!playing||epoch!==playEpoch)return;if(lastTime!==null){cursor=advancePlayback(cursor,now-lastTime,speed,5000,range);updateProbe();}lastTime=now;requestAnimationFrame(next=>animate(next,epoch));}
 function setRange(next){pause();range=scenario==='failure'?720:next;cursor=Math.min(cursor,range);$('cycle-one').classList.toggle('selected',range===360);$('cycle-two').classList.toggle('selected',range===720);$('cycle-one').setAttribute('aria-pressed',String(range===360));$('cycle-two').setAttribute('aria-pressed',String(range===720));rebuild();updateProbe();}
 function preset(kind){pause();$('inv-transfer-status').hidden=true;p=inverterPreset(p.circuit);inductanceMode='large';customInductance=2000;selectedPreset=kind;scenario=kind==='failure'?'failure':'steady';if(kind==='ideal')p.lb=0;if(kind==='failure'){p.alpha=172;range=720;cursor=450;}else cursor=p.circuit==='bridge'?146:176;update();if(kind==='failure'){const event=result.events.find(e=>e.failed&&e.start>=360);if(event)cursor=Math.min(720,event.deadline);}setRange(range);}
-function commit(id){pause();const field=numericFields.get(id),el=$(id),raw=el.value.trim().replace(/−/g,'-').replace(/，/g,'.'),n=Number(raw);if(!el.disabled&&raw!==''&&Number.isFinite(n)){const next=Math.min(field.max,Math.max(field.min,n));if(next!==p[field.key])selectedPreset='';p[field.key]=next;if(field.key==='l')customInductance=next;}el.value=p[field.key];update();}
+function commit(id){const field=numericFields.get(id),el=$(id),raw=el.value.trim().replace(/−/g,'-').replace(/，/g,'.'),n=Number(raw);let changed=false;if(!el.disabled&&raw!==''&&Number.isFinite(n)){const next=Math.min(field.max,Math.max(field.min,n));changed=next!==p[field.key];if(changed){pause();selectedPreset='';p[field.key]=next;if(field.key==='l')customInductance=next;}}el.value=p[field.key];if(changed)update();}
 function activeInput(){const el=document.activeElement;return el&&!el.disabled&&numericFields.has(el.id)?el:null;}
 function positionToolbar(){const viewport=window.visualViewport;document.documentElement.style.setProperty('--input-toolbar-bottom',Math.max(12,viewport?window.innerHeight-viewport.height-viewport.offsetTop+12:12)+'px');}
 function syncToolbar(){const el=activeInput();$('inv-input-toolbar').hidden=!el;if(el){$('inv-input-label').textContent=numericFields.get(el.id).label;$('inv-input-negative').hidden=el.id!=='inv-e';positionToolbar();}}
@@ -122,14 +127,16 @@ $('inv-l-mode').addEventListener('change',e=>{pause();if(inductanceMode==='custo
 $('preset-normal').addEventListener('click',()=>preset('normal'));$('preset-ideal').addEventListener('click',()=>preset('ideal'));$('preset-failure').addEventListener('click',()=>preset('failure'));$('inverter-reset').addEventListener('click',()=>preset('normal'));
 $('cycle-one').addEventListener('click',()=>{if(scenario==='failure'){toast('失败示例需要 2 周期：前一周期正常，后一周期改变 α。');return;}setRange(360);});$('cycle-two').addEventListener('click',()=>setRange(720));
 $('inverter-cursor').addEventListener('input',e=>{pause();cursor=Number(e.target.value);updateProbe();});
-$('inverter-play').addEventListener('click',()=>{if(playing){pause();return;}playing=true;lastTime=0;$('inverter-play').textContent='Ⅱ 暂停';$('inverter-play').setAttribute('aria-label','暂停导通过程');requestAnimationFrame(animate);});
+$('inverter-play').addEventListener('click',()=>{if(playing){pause();return;}playing=true;lastTime=null;const epoch=++playEpoch;$('inverter-play').textContent='Ⅱ 暂停';$('inverter-play').setAttribute('aria-label','暂停导通过程');$('inverter-play').setAttribute('aria-pressed','true');syncSvgPlayback($('inverter-diagram'),true);requestAnimationFrame(now=>animate(now,epoch));});
+$('inverter-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastTime=null;updateProbe();});
 $('inverter-step').addEventListener('click',()=>{pause();const times=result.events.flatMap(e=>[e.start,e.end,e.failed?e.deadline:null]).filter(t=>t!==null&&t<=range).sort((a,b)=>a-b);cursor=times.find(t=>t>cursor+.05)??times[0]??0;updateProbe();});
 function point(e){const rect=canvas.getBoundingClientRect();cursor=Math.max(0,Math.min(range,(e.clientX-rect.left-layout.left)/(layout.width-layout.left-layout.right)*range));updateProbe();}
-let dragging=false;canvas.addEventListener('pointerdown',e=>{pause();dragging=true;point(e);});canvas.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'||dragging)point(e);});canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
+bindProbeGestures(canvas,{pause,point,isPlaying:()=>playing});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 $('inverter-export').addEventListener('click',()=>{
   const out=document.createElement('canvas'),width=layout.width+40,height=layout.height+155;out.width=width*2;out.height=height*2;const c=out.getContext('2d');c.scale(2,2);c.fillStyle='#fcfdf9';c.fillRect(0,0,width,height);c.fillStyle='#304c37';c.font='600 18px system-ui';c.fillText(inverterTopology(p.circuit).name+'有源逆变 · 换相波形',20,30);c.font='11px system-ui';c.fillStyle='#708366';c.fillText(`α=${p.alpha}°  β=${fmt(180-p.alpha,2)}°  L_B=${p.lb} mH  L=${p.l} mH`,20,54);c.fillText(`U₂=${p.u2} V  R=${p.r} Ω  E=${p.e} V  f=${p.f} Hz  δ=${p.pulseWidth}°`,20,74);const angleData=commutationMeasurements(focusedEvent);c.fillText(`所选换相 γ=${angleData?.gamma===null||!angleData?'未完成':fmt(angleData.gamma,2)+'°'}`,20,94);c.drawImage(baseCanvas,20,110,layout.width,layout.height);c.font='10px system-ui';c.fillText(scenario==='failure'?`360° 时 α: 140° → ${p.alpha}°；统计窗口 360°~720°。`:(p.circuit==='bridge'?'L_B 为交流回路总电感；':'L_B 为每相电感；')+'计入负载平波电感；γ 为教材中的换相重叠角。',20,height-20);
   out.toBlob(blob=>{if(!blob){toast('图片生成失败，请重试');return;}const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${inverterTopology(p.circuit).name}_有源逆变_alpha${p.alpha}_LB${p.lb}.png`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('波形图已生成');},'image/png');
 });
 new ResizeObserver(()=>{if(result){rebuild();updateProbe();}}).observe($('chart-viewport'));
+$('inverter-speed').value=speed;
 if(!transferred||imported){update();setRange(range);}

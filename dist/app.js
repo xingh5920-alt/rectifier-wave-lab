@@ -1,3 +1,4 @@
+import {playbackRate,advancePlayback,bindProbeGestures,withPlaybackRate} from './playback.js';
 import {circuits,alphaLimit,average,sample,gates,metrics,explanation,mod,loadNames,isFiniteLoad,emf,simulation,controlAngles} from './model.js';
 import {formulaMarkup,explanationMarkup,svgNotationMarkup} from './formula-display.js';
 import {inversionCircuits,isActiveInversion,readTransferredState,stateUrl,inversionUrl} from './mode-transfer.js';
@@ -8,7 +9,8 @@ const inversionPage=document.body.dataset.mode==='inverter';
 const restored=readTransferredState(window.location?.search);
 const initial=restored&&(!inversionPage||inversionCircuits.includes(restored.p.circuit))?restored:null;
 let p=initial?{...initial.p}:inversionPage?{...defaults,load:'rle',alpha:120,l:1000,e:-400}:{...defaults};
-let cycles=initial?.cycles??2,cursor=initial?.cursor??120,playing=false,timeAxis=initial?.timeAxis??false,lastTime=0;
+let cycles=initial?.cycles??2,cursor=initial?.cursor??120,playing=false,timeAxis=initial?.timeAxis??false,lastTime=null;
+let speed=playbackRate(new URLSearchParams(window.location?.search).get('speed')),playEpoch=0;
 let switchTimer,navigationPending=false,adjustingAlpha=false;
 let resumeParameters=initial?.resume?JSON.stringify(p):null;
 const availableCircuits=inversionPage?circuits.filter(c=>inversionCircuits.includes(c.id)):circuits;
@@ -92,8 +94,8 @@ function scheduleModeSwitch(){
     if(activeNumberInput()||adjustingAlpha||document.hidden||navigationPending||!isActiveInversion(p))return;
     navigationPending=true;pause();
     const view={cycles,cursor,timeAxis};
-    if(!inversionPage)window.history?.replaceState(null,'',stateUrl('./',p,view,true));
-    window.location.assign(inversionUrl(p,view));
+    if(!inversionPage)window.history?.replaceState(null,'',withPlaybackRate(stateUrl('./',p,view,true),speed));
+    window.location.assign(withPlaybackRate(inversionUrl(p,view),speed));
   },350);
 }
 function hasFloatingGap(){return ['bridge','threeBridge','semi'].includes(p.circuit)&&calculated.gap;}
@@ -229,7 +231,7 @@ function draw(){
 
 function updateProbe(){
   cursor=Math.min(cycles*360,Math.max(0,cursor));
-  if(inversionPage)$('rectifier-return').href=stateUrl('./',p,{cycles,cursor,timeAxis},true);
+  if(inversionPage)$('rectifier-return').href=withPlaybackRate(stateUrl('./',p,{cycles,cursor,timeAxis},true),speed);
   $('cursor').max=cycles*360;$('cursor').value=cursor;
   $('cursor-value').textContent=timeAxis?number(cursor/360/p.f*1000,1)+'ms':number(cursor)+'°';
   $('instant-angle').textContent=number(cursor)+'°';
@@ -278,15 +280,16 @@ function renderCircuit(){
   $('circuit-diagram').innerHTML=`<svg viewBox="0 0 530 310" role="img" aria-label="${circuitName()}主电路，绿色表示当前导通路径">${s}</svg>`;
 }
 
-function animate(now){
-  if(!playing)return;
-  if(lastTime){cursor+=Math.min(now-lastTime,100)*360/4000;if(cursor>=cycles*360)cursor=0;updateProbe();}
-  lastTime=now;requestAnimationFrame(animate);
+function animate(now,epoch){
+  if(!playing||epoch!==playEpoch)return;
+  if(lastTime!==null){cursor=advancePlayback(cursor,now-lastTime,speed,4000,cycles*360);updateProbe();}
+  lastTime=now;requestAnimationFrame(next=>animate(next,epoch));
 }
-function togglePlay(){playing=!playing;lastTime=0;$('play-icon').textContent=playing?'Ⅱ':'▶';$('play-text').textContent=playing?'暂停':'播放';$('play').setAttribute('aria-label',playing?'暂停波形导通过程':'播放波形导通过程');if(playing)requestAnimationFrame(animate);}
+function togglePlay(){playing=!playing;lastTime=null;const epoch=++playEpoch;$('play-icon').textContent=playing?'Ⅱ':'▶';$('play-text').textContent=playing?'暂停':'播放';$('play').setAttribute('aria-label',playing?'暂停波形导通过程':'播放波形导通过程');$('play').setAttribute('aria-pressed',String(playing));if(playing)requestAnimationFrame(now=>animate(now,epoch));}
 function pause(){if(playing)togglePlay();}
 function setCursorFromPointer(e){const rect=canvas.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const left=y>=layout.rows.find(r=>r.key==='gates').y?layout.gateLeft:layout.left;cursor=Math.max(0,Math.min(layout.range,(x-left)/(layout.width-left-layout.right)*layout.range));updateProbe();}
 
+$('playback-speed').value=speed;
 initNav();
 $('alpha').addEventListener('pointerdown',()=>{adjustingAlpha=true;clearTimeout(switchTimer);});
 function finishAlphaDrag(){if(adjustingAlpha){adjustingAlpha=false;scheduleModeSwitch();}}
@@ -329,10 +332,8 @@ $('axis').addEventListener('click',()=>{timeAxis=!timeAxis;updateAxisButton();re
 $('cursor').addEventListener('input',e=>{pause();cursor=Number(e.target.value);updateProbe();});
 $('play').addEventListener('click',togglePlay);
 $('step').addEventListener('click',()=>{pause();const events=[...new Set(gates(p).flatMap(g=>g.starts))].flatMap(t=>Array.from({length:cycles},(_,k)=>t+k*360)).sort((a,b)=>a-b);cursor=events.find(t=>t>cursor+.01)??events[0]??0;updateProbe();});
-let dragging=false;
-canvas.addEventListener('pointerdown',e=>{pause();dragging=true;canvas.setPointerCapture(e.pointerId);setCursorFromPointer(e);});
-canvas.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'||dragging)setCursorFromPointer(e);});
-canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
+bindProbeGestures(canvas,{pause,point:setCursorFromPointer,isPlaying:()=>playing});
+$('playback-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastTime=null;});
 $('help').addEventListener('click',()=>$('help-dialog').showModal());
 $('close-help').addEventListener('click',()=>$('help-dialog').close());$('start-learning').addEventListener('click',()=>$('help-dialog').close());
 $('help-dialog').addEventListener('click',e=>{if(e.target===$('help-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
