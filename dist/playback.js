@@ -1,3 +1,4 @@
+export const defaultFlowMotion=()=>!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 export const playbackRate=value=>Number(value)===.5?.5:1;
 export const advancePlayback=(cursor,elapsed,rate,period,range)=>(cursor+Math.max(0,Math.min(100,elapsed))*360*playbackRate(rate)/period)%range;
 export function withPlaybackRate(url,rate){
@@ -37,17 +38,18 @@ export function bindProbeGestures(canvas,{pause,point,isPlaying}){
 }
 
 export function syncSvgPlayback(container,playing){
-  const svg=container.querySelector?.('svg');
-  if(playing)svg?.unpauseAnimations?.();else svg?.pauseAnimations?.();
+  // Flow is an illustrative tracer at the selected instant, independent of
+  // waveform time. CSS motion keeps working when the waveform is paused.
+  container.setAttribute?.('data-flow-running',String(playing));
 }
 
-export function renderFlowSegments(segments,rate=1){
-  const duration=1.2/playbackRate(rate);
+export function renderFlowSegments(segments,rate=1,feedback=false){
+  const duration=.45/playbackRate(rate);
   const paths=segments.map(({id,points,color})=>{
     const last=points.at(-1),prev=points.at(-2),dx=last[0]-prev[0],dy=last[1]-prev[1],length=Math.hypot(dx,dy);
     const still=`translate(${last[0]-dx/length*7} ${last[1]-dy/length*7}) rotate(${Math.atan2(dy,dx)*180/Math.PI})`;
     const d=points.map(([x,y],k)=>(k?'L':'M')+x+' '+y).join(' ');
-    return `<g data-flow="${id}" data-flow-path="${d}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke-width="4" opacity=".18"/>${[0,duration/2].map(delay=>`<g class="dc-flow-arrow"><circle r="3.5" fill="${color}" stroke="#fcfdf9" stroke-width="1"/><path d="M-6 -3.5L-1 0L-6 3.5"/><animateMotion path="${d}" dur="${duration}s" begin="-${delay}s" repeatCount="indefinite" rotate="auto"/></g>`).join('')}<path class="dc-flow-still" d="M-4 -3L1 0L-4 3" transform="${still}"/></g>`;
+    return `<g data-flow="${id}" data-flow-path="${d}" fill="none" stroke="${feedback?'#d65e19':color}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke-width="7" opacity="${/device|load-[RL]$|phase-load/.test(id)?0:.15}"/><path class="dc-flow-stream" d="${d}" stroke-width="6" stroke-dasharray="1 21"/><path class="dc-flow-direction" d="M-5 -4L1 0L-5 4" stroke-width="2.5" transform="${still}"/></g>`;
   }).join('');
-  return `<g class="dc-current-flow" pointer-events="none" aria-hidden="true">${paths}</g>`;
+  return `<g class="dc-current-flow" data-flow-mode="${feedback?'feedback':'supply'}" style="--flow-duration:${duration}s" pointer-events="none" aria-hidden="true">${paths}</g>`;
 }

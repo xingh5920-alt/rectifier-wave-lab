@@ -16,11 +16,13 @@ export function currentFlowSegments(type,s){
     if(!diode&&!valve)return;
     const current=diode?-1:1,dx=x+jump;
     const start=upper?rail:mid,end=upper?mid:rail;
+    add('leg-'+number+'-device',diode?[[dx,cy-28],[dx,cy+28]]:[[x,cy-28],[x,cy-15],[x-8,cy-7],[x-8,cy+7],[x,cy+15],[x,cy+28]],current,color);
     add('leg-'+number+'-in',diode?[[x,start],[x,cy-junction],[dx,cy-junction],[dx,cy-28]]:[[x,start],[x,cy-28]],current,color);
     add('leg-'+number+'-out',diode?[[dx,cy+28],[dx,cy+junction],[x,cy+junction],[x,end]]:[[x,cy+28],[x,end]],current,color);
   };
   if(type==='half'){
     const i=s.io,a=s.active;
+    add('load-L',[[279,230],[231,230]],i);add('load-R',[[221,230],[161,230]],i);
     add('load-before-L',[[320,230],[279,230]],i);add('load-between',[[231,230],[221,230]],i);add('load-after-R',[[161,230],[130,230]],i);
     const upper=a.includes('V1')||a.includes('VD1');
     vsiLeg(320,230,130,60,1,a,true,50,green,40);vsiLeg(320,230,320,420,2,a,false,50,green,40);
@@ -33,6 +35,7 @@ export function currentFlowSegments(type,s){
     }
   }else if(type==='full'||type==='phase'){
     const i=s.io,a=s.active,upper=n=>a.includes('V'+n)||a.includes('VD'+n);
+    add('load-R',[[295,247],[355,247]],i);add('load-L',[[385,247],[433,247]],i);
     for(const [x,t,b]of[[195,1,2],[505,3,4]]){vsiLeg(x,247,133,60,t,a,true,42);vsiLeg(x,247,337,430,b,a,false,42);}
     add('load-before-R',[[195,247],[295,247]],i);add('load-between',[[355,247],[385,247]],i);add('load-after-L',[[433,247],[505,247]],i);
     add('source-top',[[38,60],[195,60]],s.dc);add('source-bottom',[[38,430],[195,430]],-s.dc);
@@ -40,9 +43,11 @@ export function currentFlowSegments(type,s){
   }else if(type==='parallel'){
     for(const [x,t,b]of[[195,1,2],[505,3,4]]){
       const ti=s.currents[t-1],bi=s.currents[b-1];
+      add('VT'+t+'-device',[[x,92],[x,148]],ti);add('LT'+t+'-device',[[x,171],[x,219]],ti);add('LT'+b+'-device',[[x,295],[x,343]],bi);add('VT'+b+'-device',[[x,363],[x,419]],bi);
       add('VT'+t+'-in',[[x,60],[x,92]],ti);add('VT'+t+'-out',[[x,148],[x,171]],ti);add('LT'+t+'-out',[[x,219],[x,247]],ti);
       add('LT'+b+'-in',[[x,247],[x,295]],bi);add('VT'+b+'-in',[[x,343],[x,363]],bi);add('VT'+b+'-out',[[x,419],[x,450]],bi);
     }
+    add('load-R-device',[[245,282],[305,282]],s.il);add('load-L-device',[[380,282],[428,282]],s.il);
     add('R-branch-in',[[195,247],[195,282],[245,282]],s.il);add('RL-between',[[305,282],[380,282]],s.il);add('L-branch-out',[[428,282],[505,282],[505,247]],s.il);
     add('C-branch-in',[[195,247],[195,225],[325,225]],s.ic);add('C-branch-out',[[375,225],[505,225],[505,247]],s.ic);
     add('dc-before-Ld',[[38,60],[55,60]],s.dc);add('dc-after-Ld',[[103,60],[195,60]],s.dc);
@@ -55,10 +60,12 @@ export function currentFlowSegments(type,s){
       const x=xs[k],y=ys[k],i=s.i[k],color=colours[k];
       if(csi){
         const ti=Math.max(0,i),bi=Math.max(0,-i);
+        add('VT'+tops[k]+'-device',[[x,92],[x,148]],ti,color);add('VD'+tops[k]+'-device',[[x,177],[x,233]],ti,color);add('VD'+bottoms[k]+'-device',[[x,317],[x,373]],bi,color);add('VT'+bottoms[k]+'-device',[[x,402],[x,458]],bi,color);
         add('VT'+tops[k]+'-in',[[x,60],[x,92]],ti,color);add('upper-series-'+k,[[x,148],[x,177]],ti,color);add('VD'+tops[k]+'-out',[[x,233],[x,y]],ti,color);
         add('VD'+bottoms[k]+'-in',[[x,y],[x,317]],bi,color);add('lower-series-'+k,[[x,373],[x,402]],bi,color);add('VT'+bottoms[k]+'-out',[[x,458],[x,bottom]],bi,color);
       }else {vsiLeg(x,y,138,60,tops[k],a,true,45,color);vsiLeg(x,y,350,bottom,bottoms[k],a,false,45,color);}
       add('phase-'+k,[[x,y],[csi?664:565,y]],i,color);
+      if(!csi)add('phase-load-'+k,[[565,y],[675,y]],i,color);
       if(!csi)add('phase-return-'+k,[[675,y],[719,y]],i,color);
     }
     for(let k=0;k<3;k++){
@@ -71,4 +78,4 @@ export function currentFlowSegments(type,s){
   }
   return segments;
 }
-export const currentFlowSVG=(type,s,rate=1)=>renderFlowSegments(currentFlowSegments(type,s),rate);
+export const currentFlowSVG=(type,s,rate=1)=>renderFlowSegments(currentFlowSegments(type,s),rate,s.power < -1e-8);

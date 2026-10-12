@@ -1,4 +1,4 @@
-import {playbackRate,advancePlayback,bindProbeGestures,syncSvgPlayback} from './playback.js';
+import {defaultFlowMotion,playbackRate,advancePlayback,bindProbeGestures,syncSvgPlayback} from './playback.js';
 import {TOPOLOGIES,DEFAULTS,parameters,buildModel,mod} from './dc-inverter-model.js';
 import {circuitSVG} from './dc-inverter-circuit.js';
 import {dcFormulaMarkup,inlineNotation,notationHTML} from './dc-inverter-formulas.js';
@@ -13,7 +13,7 @@ for(const key of Object.keys(DEFAULTS[type]))if(initial.has(key))saved.get(type)
 let p=parameters(type,saved.get(type)),model=buildModel(type,p),cycles=initial.get('cycles')==='2'?2:1;
 let probe=initial.has('cursor')&&Number.isFinite(Number(initial.get('cursor')))?Math.min(cycles*360,Math.max(0,Number(initial.get('cursor')))):15,timeAxis=initial.get('timeAxis')==='1';
 let circuitMarkup='',zoomCircuitMarkup='';
-let speed=playbackRate(initial.get('speed')),playEpoch=0;
+let speed=playbackRate(initial.get('speed')),playEpoch=0,flowMoving=defaultFlowMotion(),feedbackAngle=null;
 let playing=false,lastFrame=null,lastProbeUpdate=0,chartWidth=700,chartHeight=500,rows=[],geometry=[],plot={};
 const canvas=$('dc-canvas'),ctx=canvas.getContext('2d'),base=document.createElement('canvas'),baseCtx=base.getContext('2d');
 const fnum=(v,d=1)=>!Number.isFinite(v)?'—':Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e4?(v/1000).toFixed(1)+'k':Math.abs(v)<.5e-5?'0':v.toFixed(d);
@@ -69,7 +69,13 @@ function select(next){
   stop();renderTabs();renderFields();recompute();writeUrl();
 }
 function recompute(){
-  model=buildModel(type,p);$('dc-title').textContent=meta().name;$('dc-figure').textContent=meta().figure;
+  model=buildModel(type,p);
+  feedbackAngle=null;let leastPower=-1e-8;
+  const candidates=Array.from({length:720},(_,k)=>(k+.5)/2);
+  for(const edge of [0,60,120,180,240,300,p.theta,180+(p.theta??0),p.gamma,180+(p.gamma??0)])if(Number.isFinite(edge))candidates.push(mod(edge+1e-7));
+  for(const angle of candidates){const sample=model.sample(angle);if(sample.power<leastPower){leastPower=sample.power;feedbackAngle=angle;}}
+  $('dc-see-feedback').disabled=feedbackAngle===null;$('dc-see-feedback').textContent=feedbackAngle===null?'当前参数无回馈时段':'查看回馈';
+  $('dc-title').textContent=meta().name;$('dc-figure').textContent=meta().figure;
   syncAngles();
   if(type==='full')$('dc-figure').textContent=p.theta===180?'180° 导电':'图 4-7 · 移相调压';
   renderMetrics();renderExplanation();buildRows();drawChart();updateProbe();
@@ -200,15 +206,18 @@ function updateProbe(){
   $('dc-probe-values').innerHTML=values.map(([name,v,unit])=>`<span class="dc-probe-value"><span class="dc-probe-name">${maths(name)}</span><b>${fnum(v,unit==='A'?2:1)} ${unit}</b></span>`).join('');
   const svg=circuitSVG(type,s,p,$('dc-show-flow').checked,speed);
   // Keep the existing SVG while directions and conducting devices are unchanged,
-  // so playback does not restart the arrow animations on every probe update.
+  // so flowing particles are not restarted on every probe update.
   if(svg!==circuitMarkup){$('dc-diagram').innerHTML=svg;circuitMarkup=svg;}
   if($('dc-zoom-dialog').open&&svg!==zoomCircuitMarkup){$('dc-zoom-diagram').innerHTML=svg;zoomCircuitMarkup=svg;}
-  syncSvgPlayback($('dc-diagram'),playing);if($('dc-zoom-dialog').open)syncSvgPlayback($('dc-zoom-diagram'),playing);
+  syncSvgPlayback($('dc-diagram'),flowMoving);if($('dc-zoom-dialog').open)syncSvgPlayback($('dc-zoom-diagram'),flowMoving);
   const current=s.i.some(i=>Math.abs(i)>1e-8)||Math.abs(s.il??0)>1e-8||Math.abs(s.ic??0)>1e-8;
   $('dc-motion-state').textContent=!current?'零电流 · 当前没有流动路径':s.overlap?'换流交接 · 观察前后器件分担电流':Math.abs(s.u)<1e-8&&adjustableBridge()?'桥内续流 · 输出电压为零，电流仍在流动':s.power<0?'能量回馈 · 负载向直流侧送能':'导通供能 · 当前路径与波形同步';
+  $('dc-flow-scene').setAttribute('data-feedback',String(s.power < -1e-8));
+  const single=type==='half'||type==='full'||type==='phase',direction=single?(Math.abs(s.io)<1e-8?'负载电流为零':(type==='half'?(s.io>0?'← 从桥臂中点流向 N′':'→ 从 N′ 流向桥臂中点'):(s.io>0?'→ 负载电流从左桥臂流向右桥臂':'← 负载电流从右桥臂流向左桥臂'))):'各支路光点按当前实际电流方向移动';
+  $('dc-flow-direction').textContent=(s.power < -1e-8?(model.isCSI?'回馈时直流电流仍保持原方向，直流端电压改变极性。':`回馈：${s.active.filter(v=>v.startsWith('VD')).join('、')} 导通，电流流回直流正端。`):Math.abs(s.u)<1e-8&&adjustableBridge()?'桥内续流：电流在桥内闭合，直流端无电流。':'')+direction+'。';
   drawProbe();
 }
-function stop(){playing=false;playEpoch++;$('dc-play').textContent='▶ 播放';$('dc-play').setAttribute('aria-pressed','false');lastFrame=null;syncSvgPlayback($('dc-diagram'),false);syncSvgPlayback($('dc-zoom-diagram'),false);}
+function stop(){playing=false;playEpoch++;$('dc-play').textContent='▶ 播放';$('dc-play').setAttribute('aria-pressed','false');lastFrame=null;}
 function frame(now,epoch){if(!playing||epoch!==playEpoch)return;if(lastFrame!==null)probe=advancePlayback(probe,now-lastFrame,speed,4000,cycles*360);lastFrame=now;if(now-lastProbeUpdate>70){updateProbe();lastProbeUpdate=now;}else drawProbe();requestAnimationFrame(next=>frame(next,epoch));}
 $('dc-circuit-select').addEventListener('change',e=>select(e.target.value));
 $('dc-reset').addEventListener('click',()=>{p=parameters(type,DEFAULTS[type]);saved.set(type,{...p});renderFields();recompute();writeUrl();});
@@ -216,6 +225,9 @@ $('dc-theta-range').addEventListener('input',e=>changeAngle('theta',e.target.val
 $('dc-pulse-range').addEventListener('input',e=>changeAngle('pulse',e.target.value));
 $('dc-theta-range').addEventListener('change',writeUrl);
 document.querySelectorAll('[data-theta]').forEach(b=>b.addEventListener('click',()=>changeAngle('theta',b.dataset.theta)));
+$('dc-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('dc-flow-motion').setAttribute('aria-pressed',String(flowMoving));
+$('dc-flow-motion').addEventListener('click',()=>{flowMoving=!flowMoving;$('dc-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('dc-flow-motion').setAttribute('aria-pressed',String(flowMoving));updateProbe();});
+$('dc-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;stop();probe=feedbackAngle;$('dc-show-flow').checked=true;flowMoving=true;$('dc-flow-motion').textContent='Ⅱ 暂停流动';$('dc-flow-motion').setAttribute('aria-pressed','true');updateProbe();writeUrl();});
 $('dc-show-flow').addEventListener('change',()=>{updateProbe();writeUrl();});
 $('dc-show-gates').addEventListener('change',()=>{buildRows();drawChart();});$('dc-show-devices').addEventListener('change',()=>{buildRows();drawChart();});
 function setCycles(value){cycles=value;probe=Math.min(probe,cycles*360);$('dc-cycle-one').classList.toggle('selected',value===1);$('dc-cycle-two').classList.toggle('selected',value===2);$('dc-cycle-one').setAttribute('aria-pressed',value===1);$('dc-cycle-two').setAttribute('aria-pressed',value===2);drawChart();updateProbe();writeUrl();}
@@ -223,10 +235,10 @@ $('dc-cycle-one').addEventListener('click',()=>setCycles(1));$('dc-cycle-two').a
 $('dc-axis').addEventListener('click',()=>{timeAxis=!timeAxis;$('dc-axis').textContent=timeAxis?'横轴 t / ms ⇄':'横轴 ωt / ° ⇄';drawChart();updateProbe();writeUrl();});
 $('dc-cursor').addEventListener('input',e=>{stop();probe=Number(e.target.value);updateProbe();});$('dc-cursor').addEventListener('change',writeUrl);
 bindProbeGestures(canvas,{pause:stop,isPlaying:()=>playing,point:event=>{const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*chartWidth/r.width;probe=Math.min(cycles*360,Math.max(0,(x-plot.left)/(plot.right-plot.left)*cycles*360));updateProbe();writeUrl();}});
-$('dc-play').addEventListener('click',()=>{if(playing)stop();else{playing=true;lastFrame=null;const epoch=++playEpoch;$('dc-play').textContent='Ⅱ 暂停';$('dc-play').setAttribute('aria-pressed','true');syncSvgPlayback($('dc-diagram'),true);syncSvgPlayback($('dc-zoom-diagram'),true);requestAnimationFrame(now=>frame(now,epoch));}});
+$('dc-play').addEventListener('click',()=>{if(playing)stop();else{playing=true;lastFrame=null;const epoch=++playEpoch;$('dc-play').textContent='Ⅱ 暂停';$('dc-play').setAttribute('aria-pressed','true');requestAnimationFrame(now=>frame(now,epoch));}});
 $('dc-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastFrame=null;updateProbe();writeUrl();});
 $('dc-step').addEventListener('click',()=>{stop();const local=mod(probe),events=adjustableBridge()?[0,p.theta,180,180+p.theta,360]:type==='threeV'||type==='threeI'?[0,60,120,180,240,300,360]:[0,180,360];const next=events.find(a=>a>local+.05)??360;probe=(Math.floor(probe/360)*360+next+.1)%(cycles*360);updateProbe();writeUrl();});
-$('dc-zoom').addEventListener('click',()=>{zoomCircuitMarkup=circuitSVG(type,model.sample(probe),p,$('dc-show-flow').checked,speed);$('dc-zoom-diagram').innerHTML=zoomCircuitMarkup;$('dc-zoom-dialog').showModal();syncSvgPlayback($('dc-zoom-diagram'),playing);});$('dc-close-zoom').addEventListener('click',()=>$('dc-zoom-dialog').close());
+$('dc-zoom').addEventListener('click',()=>{zoomCircuitMarkup=circuitSVG(type,model.sample(probe),p,$('dc-show-flow').checked,speed);$('dc-zoom-diagram').innerHTML=zoomCircuitMarkup;$('dc-zoom-dialog').showModal();syncSvgPlayback($('dc-zoom-diagram'),flowMoving);});$('dc-close-zoom').addEventListener('click',()=>$('dc-zoom-dialog').close());
 function positionToolbar(){const v=window.visualViewport;$('dc-input-toolbar').style.bottom=Math.max(12,v?window.innerHeight-v.height-v.offsetTop+12:12)+'px';}
 $('dc-input-toolbar').addEventListener('pointerdown',event=>event.preventDefault());
 $('dc-input-done').addEventListener('click',()=>{document.activeElement?.blur();$('dc-input-toolbar').hidden=true;});

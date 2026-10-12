@@ -1,4 +1,5 @@
-import {playbackRate,advancePlayback,bindProbeGestures,withPlaybackRate} from './playback.js';
+import {rectifierFlowSVG} from './rectifier-flow.js';
+import {defaultFlowMotion,playbackRate,advancePlayback,bindProbeGestures,withPlaybackRate,syncSvgPlayback} from './playback.js';
 import {circuits,alphaLimit,average,sample,gates,metrics,explanation,mod,loadNames,isFiniteLoad,emf,simulation,controlAngles} from './model.js';
 import {formulaMarkup,explanationMarkup,svgNotationMarkup} from './formula-display.js';
 import {inversionCircuits,isActiveInversion,readTransferredState,stateUrl,inversionUrl} from './mode-transfer.js';
@@ -10,7 +11,7 @@ const restored=readTransferredState(window.location?.search);
 const initial=restored&&(!inversionPage||inversionCircuits.includes(restored.p.circuit))?restored:null;
 let p=initial?{...initial.p}:inversionPage?{...defaults,load:'rle',alpha:120,l:1000,e:-400}:{...defaults};
 let cycles=initial?.cycles??2,cursor=initial?.cursor??120,playing=false,timeAxis=initial?.timeAxis??false,lastTime=null;
-let speed=playbackRate(new URLSearchParams(window.location?.search).get('speed')),playEpoch=0;
+let speed=playbackRate(new URLSearchParams(window.location?.search).get('speed')),playEpoch=0,flowMoving=defaultFlowMotion(),circuitMarkup='',feedbackAngle=null;
 let switchTimer,navigationPending=false,adjustingAlpha=false;
 let resumeParameters=initial?.resume?JSON.stringify(p):null;
 const availableCircuits=inversionPage?circuits.filter(c=>inversionCircuits.includes(c.id)):circuits;
@@ -80,7 +81,10 @@ function update(){
   $('input-legend').innerHTML=explanationMarkup(c.phases===3?'输入 i_a':'输入 i_2');
   $('wave-model-note').innerHTML=explanationMarkup(p.load==='rle'?'断流区 i_d = 0，整个负载端电压 u_d = E':hasFloatingGap()?'断流区的浮置节点电位及 u_VT1 留空':'蓝色实线为实际波形，灰色虚线为参考');
   $('wave-canvas').setAttribute('aria-label',`${circuitName(c)}，${loadNames[p.load]}，触发角 ${p.alpha} 度。平均输出电压 ${number(calculated.ud)} 伏，平均负载电流 ${number(calculated.id,2)} 安。多行展示电压、电流、器件波形及触发脉冲。`);
-  renderCircuit();resizeAndDraw();updateProbe();
+  feedbackAngle=null;let leastPower=-1e-8;
+  for(let a=.25;a<360;a+=.5){const q=sample(a,p);if(q.ud*q.id<leastPower){leastPower=q.ud*q.id;feedbackAngle=a;}}
+  $('rect-see-feedback').disabled=feedbackAngle===null;$('rect-see-feedback').textContent=feedbackAngle===null?'当前参数无回馈时段':'查看回馈';
+  resizeAndDraw();updateProbe();
   const active=isActiveInversion(p);
   $('mode-status').textContent=inversionPage?(active?`有源逆变 · 保留${c.short}电路及全部参数 · 平均回馈功率 ${number(-calculated.power)} W`:'当前参数未形成连续、稳定的有源逆变。调节 α、E 或 L 可继续观察。'):'自动切换：支持逆变的电路在 α > 90°、E < 0 且连续电流向电网回馈时，进入对应的有源逆变实验。';
   scheduleModeSwitch();
@@ -238,7 +242,13 @@ function updateProbe(){
   const s=sample(cursor,p);$('active-valves').textContent=s.active.length?s.active.join(' + ')+(s.freewheel?' 续流':' 导通'):'器件关断 · 负载断流';
   $('instant-source').innerHTML=explanationMarkup(s.freewheel?'续流：u_d = 0，电感中的电流继续流动':s.active.length?'u_d = '+s.source:p.load==='rle'?'i_d = 0，u_d = E = '+number(emf(p))+' V':'u_d = 0，i_d = 0');
   $('instant-ud').textContent=number(s.ud)+' V';$('instant-i').textContent=number(s.ivt1,2)+' A';
-  const svg=$('circuit-diagram');svg.querySelectorAll('[data-valve]').forEach(el=>el.classList.toggle('active',s.active.includes(el.dataset.valve)));svg.querySelectorAll('[data-flow]').forEach(el=>el.classList.toggle('active',el.dataset.flow==='load'?s.active.length>0:s.active.length>0&&!s.freewheel));draw();
+  renderCircuit(s);
+  syncSvgPlayback($('circuit-diagram'),flowMoving);
+  const feedback=s.ud*s.id < -1e-8;
+  $('rect-flow-scene').setAttribute('data-feedback',String(feedback));
+  $('rect-motion-state').textContent=!(s.id>1e-8)?'零电流 · 当前没有流动路径':s.freewheel?'桥内续流 · 电流不经过交流电源':feedback?'能量回馈 · 电流路径用橙色显示':'整流供能 · 交流侧向负载送能';
+  $('rect-flow-direction').textContent=!(s.id>1e-8)?'没有电流时不显示流动光点。':s.freewheel?'负载电流经 '+s.active.join('、')+' 在桥内闭合，交流侧电流为零。':feedback?'负载端向交流电网回馈能量；负载电流仍从上向下，交流支路光点显示实际方向。':'负载电流从上向下；交流支路方向随导通器件切换。';
+  const svg=$('circuit-diagram');svg.querySelectorAll('[data-valve]').forEach(el=>el.classList.toggle('active',s.active.includes(el.dataset.valve)));svg.querySelectorAll('[data-flow]').forEach(el=>{if(el.dataset.flow==='load'||el.dataset.flow==='source')el.classList.toggle('active',el.dataset.flow==='load'?s.active.length>0:s.active.length>0&&!s.freewheel);});draw();
 }
 function line(x1,y1,x2,y2,attrs=''){return `<path class="wire" d="M${x1} ${y1}L${x2} ${y2}" ${attrs}/>`;}
 function poly(points,attrs=''){return `<polyline class="wire" points="${points}" ${attrs}/>`;}
@@ -258,7 +268,7 @@ function loadSvg(x,top,bottom){
   svg+=text(x+8,top+19,'+','small-label')+text(x+8,bottom-5,'−','small-label');return svg;
 }
 function acCircle(x,y){return `<circle cx="${x}" cy="${y}" r="21" class="wire" data-flow="source"/><path class="wire" d="M${x-11} ${y}q5-11 11 0t11 0" data-flow="source"/>`;}
-function renderCircuit(){
+function renderCircuit(probeSample){
   let s='';
   if(p.circuit==='half'){
     s+=poly('75,124 75,55 375,55','data-valve="VT1"')+acCircle(75,145)+poly('75,166 75,245 375,245','data-flow="load"')+valve(220,55,0,'VT1')+text(206,34,'VT1','label','data-valve="VT1"')+text(34,151,'u₂','label')+loadSvg(375,55,245);
@@ -277,7 +287,8 @@ function renderCircuit(){
     for(let i=0;i<3;i++){const x=110+i*110,t='VT'+top[i],b='VT'+bottom[i];s+=branch(x,149,x,39,t,x+19,97)+branch(x,259,x,149,b,x+19,221);s+=line(x-28,149,x,149)+text(x-45,154,['a','b','c'][i],'label')+`<circle cx="${x}" cy="149" r="3" class="node"/>`;}
     s+=loadSvg(450,39,259)+text(30,292,'U₂：相电压有效值','small-label');
   }
-  $('circuit-diagram').innerHTML=`<svg viewBox="0 0 530 310" role="img" aria-label="${circuitName()}主电路，绿色表示当前导通路径">${s}</svg>`;
+  const markup=`<svg viewBox="0 0 530 310" role="img" aria-label="${circuitName()}主电路，光点表示实际电流方向，橙色表示回馈">${s}${rectifierFlowSVG(probeSample,p,speed)}</svg>`;
+  if(markup!==circuitMarkup){$('circuit-diagram').innerHTML=markup;circuitMarkup=markup;}
 }
 
 function animate(now,epoch){
@@ -289,6 +300,9 @@ function togglePlay(){playing=!playing;lastTime=null;const epoch=++playEpoch;$('
 function pause(){if(playing)togglePlay();}
 function setCursorFromPointer(e){const rect=canvas.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const left=y>=layout.rows.find(r=>r.key==='gates').y?layout.gateLeft:layout.left;cursor=Math.max(0,Math.min(layout.range,(x-left)/(layout.width-left-layout.right)*layout.range));updateProbe();}
 
+$('rect-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('rect-flow-motion').setAttribute('aria-pressed',String(flowMoving));
+$('rect-flow-motion').addEventListener('click',()=>{flowMoving=!flowMoving;$('rect-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('rect-flow-motion').setAttribute('aria-pressed',String(flowMoving));syncSvgPlayback($('circuit-diagram'),flowMoving);});
+$('rect-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;pause();cursor=feedbackAngle;flowMoving=true;$('rect-flow-motion').textContent='Ⅱ 暂停流动';$('rect-flow-motion').setAttribute('aria-pressed','true');updateProbe();});
 $('playback-speed').value=speed;
 initNav();
 $('alpha').addEventListener('pointerdown',()=>{adjustingAlpha=true;clearTimeout(switchTimer);});
@@ -333,7 +347,7 @@ $('cursor').addEventListener('input',e=>{pause();cursor=Number(e.target.value);u
 $('play').addEventListener('click',togglePlay);
 $('step').addEventListener('click',()=>{pause();const events=[...new Set(gates(p).flatMap(g=>g.starts))].flatMap(t=>Array.from({length:cycles},(_,k)=>t+k*360)).sort((a,b)=>a-b);cursor=events.find(t=>t>cursor+.01)??events[0]??0;updateProbe();});
 bindProbeGestures(canvas,{pause,point:setCursorFromPointer,isPlaying:()=>playing});
-$('playback-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastTime=null;});
+$('playback-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastTime=null;updateProbe();});
 $('help').addEventListener('click',()=>$('help-dialog').showModal());
 $('close-help').addEventListener('click',()=>$('help-dialog').close());$('start-learning').addEventListener('click',()=>$('help-dialog').close());
 $('help-dialog').addEventListener('click',e=>{if(e.target===$('help-dialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
