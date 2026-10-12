@@ -1,3 +1,4 @@
+import {currentFlowSVG} from './dc-inverter-flow.js';
 const ink='#89987d',on='#23845a';
 const phase=['#c84a44','#188768','#3979d2'];
 const label=(x,y,s,size=18,color='#506446',anchor='middle')=>{
@@ -120,8 +121,8 @@ function three(s,csi=false){
   }
   return out;
 }
-export function circuitSVG(type,s,p){
+export function circuitSVG(type,s,p,showFlow=true){
   const isThree=type==='threeV'||type==='threeI',width=isThree?760:600,height=type==='threeI'?550:type==='parallel'?530:490;
   const body=type==='half'?half(s):isThree?three(s,type==='threeI'):full(s,type==='parallel');
-  return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${type==='threeI'?'三相串联二极管式电流型':type==='parallel'?'单相并联谐振电流型':type==='threeV'?'三相桥式电压型':type==='half'?'单相半桥电压型':'单相全桥电压型'}逆变电路，绿色为当前导通器件"><rect width="${width}" height="${height}" fill="#fcfdf9"/>${body}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${type==='threeI'?'三相串联二极管式电流型':type==='parallel'?'单相并联谐振电流型':type==='threeV'?'三相桥式电压型':type==='half'?'单相半桥电压型':'单相全桥电压型'}逆变电路，绿色为当前导通器件${showFlow?'，流动箭头表示当前实际电流方向':''}"><rect width="${width}" height="${height}" fill="#fcfdf9"/>${body}${showFlow?currentFlowSVG(type,s):''}</svg>`;
 }

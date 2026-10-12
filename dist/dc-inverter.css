@@ -6,3 +6,5 @@
 
 /* Keep a symbol and its subscript together inside flex/grid labels. */
 .dc-math{display:inline-block;white-space:nowrap;font-family:Georgia,"Times New Roman",serif;font-style:italic}.dc-math sub{font-size:.72em;font-style:normal;line-height:0;vertical-align:sub}.dc-field-name{min-width:0}.dc-field-input{flex-shrink:0}.dc-probe-name{display:block;line-height:1.5}.dc-formulas{overflow-wrap:normal;min-width:0}.dc-equation{min-width:0;max-width:100%;overflow-x:auto;padding:3px 0}.dc-equation math{font-size:1.12em}.dc-formula-note{margin:0;font-size:11px;line-height:1.7}
+
+.dc-flow-toggle{display:flex;align-items:center;gap:7px;margin:11px 0 5px;color:#48693f;font-size:12px;cursor:pointer}.dc-flow-toggle input{accent-color:#397d52;width:16px;height:16px}.dc-flow-note{font-size:10px;line-height:1.7;color:#7e9170;margin:0 0 9px}.dc-current-flow .dc-flow-still{display:none}@media(prefers-reduced-motion:reduce){.dc-current-flow .dc-flow-arrow{display:none}.dc-current-flow .dc-flow-still{display:block}}
