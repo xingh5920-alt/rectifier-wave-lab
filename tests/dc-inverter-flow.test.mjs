@@ -60,6 +60,13 @@ test('CSI commutation animates both sharing phases, without inventing unmodeled 
 });
 test('Flow animation stays stable between conduction events, and hiding it preserves the electrical diagram',()=>{
   const m=buildModel('full',{l:0});assert.equal(currentFlowSVG('full',m.sample(30)),currentFlowSVG('full',m.sample(50)));
-  const hidden=circuitSVG('full',m.sample(30),m.p,false);assert.ok(hidden.includes('data-device="V1"'));assert.ok(!hidden.includes('animateMotion'));
-  const visible=circuitSVG('full',m.sample(30),m.p,true);assert.ok(visible.includes('animateMotion'));assert.ok(visible.includes('dc-flow-still'));
+  const hidden=circuitSVG('full',m.sample(30),m.p,false);assert.ok(hidden.includes('data-device="V1"'));assert.ok(!hidden.includes('dc-flow-stream'));
+  const visible=circuitSVG('full',m.sample(30),m.p,true);assert.ok(visible.includes('dc-flow-stream'));assert.ok(visible.includes('dc-flow-direction'));
+});
+test('Feedback uses the diode channel itself and an orange stream while the load current stays continuous',()=>{
+  const m=buildModel('full',{l:50}),s=m.sample(180.1),paths=currentFlowSegments('full',s);
+  assert.ok(s.io>0&&s.power<0);assert.deepEqual(s.active,['VD2','VD3']);
+  for(const n of [2,3]){const device=paths.find(p=>p.id==='leg-'+n+'-device');assert.ok(device);assert.ok(device.points[0][1]>device.points.at(-1)[1]);}
+  assert.deepEqual(find('full',s,'load-R').points,[[295,247],[355,247]]);
+  const markup=currentFlowSVG('full',s);assert.match(markup,/data-flow-mode="feedback"/);assert.match(markup,/stroke="#d65e19"/);
 });

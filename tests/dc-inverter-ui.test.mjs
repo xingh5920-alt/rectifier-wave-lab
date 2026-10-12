@@ -115,16 +115,16 @@ test('Every existing application page has an explicit new inverter entry without
 test('Current flow stays alive between probe updates, can be hidden and follows the zoomed diagram',async()=>{
   await app('?circuit=full&l=0',async({get,history})=>{
     const diagram=get('dc-diagram'),initialWrites=diagram.htmlWrites;
-    assert.ok(get('dc-show-flow').checked);assert.ok(diagram.innerHTML.includes('animateMotion'));
+    assert.ok(get('dc-show-flow').checked);assert.ok(diagram.innerHTML.includes('dc-flow-stream'));
     get('dc-cursor').value=50;get('dc-cursor').dispatch('input');assert.equal(diagram.htmlWrites,initialWrites);
     get('dc-cursor').value=190;get('dc-cursor').dispatch('input');assert.equal(diagram.htmlWrites,initialWrites+1);
     get('dc-zoom').click();assert.equal(get('dc-zoom-diagram').innerHTML,diagram.innerHTML);
     get('dc-show-flow').checked=false;get('dc-show-flow').dispatch('change');
-    assert.ok(!diagram.innerHTML.includes('animateMotion'));assert.equal(get('dc-zoom-diagram').innerHTML,diagram.innerHTML);
+    assert.ok(!diagram.innerHTML.includes('dc-flow-stream'));assert.equal(get('dc-zoom-diagram').innerHTML,diagram.innerHTML);
     assert.ok(history.at(-1).includes('flow=0'));
   });
   await app('?circuit=full&flow=0',async({get})=>{
-    assert.equal(get('dc-show-flow').checked,false);assert.ok(!get('dc-diagram').innerHTML.includes('animateMotion'));
+    assert.equal(get('dc-show-flow').checked,false);assert.ok(!get('dc-diagram').innerHTML.includes('dc-flow-stream'));
   });
 });
 test('DC waveform and particle animations slow together without pausing on a touch scroll',async()=>{
@@ -132,10 +132,35 @@ test('DC waveform and particle animations slow together without pausing on a tou
     const play=get('dc-play'),canvas=get('dc-canvas');play.click();frame(0);frame(100);
     const before=Number(get('dc-cursor').value);assert.ok(Math.abs(before-15-9)<1e-7);
     change('dc-speed','.5');frame(200);frame(300);assert.ok(Math.abs(Number(get('dc-cursor').value)-before-4.5)<1e-7);
-    assert.match(get('dc-diagram').innerHTML,/dur="2.4s"/);assert.ok(history.at(-1).includes('speed=0.5'));
+    assert.match(get('dc-diagram').innerHTML,/--flow-duration:0.9s/);assert.ok(history.at(-1).includes('speed=0.5'));
     canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:100});
     canvas.dispatch('pointermove',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});canvas.dispatch('pointercancel');
     assert.equal(play.attrs['aria-pressed'],'true');assert.match(get('dc-motion-state').textContent,/供能/);
     play.click();assert.equal(play.attrs['aria-pressed'],'false');
+  });
+});
+test('Flow runs at a frozen waveform instant, with independent pause and zoom controls',async()=>{
+  await app('?circuit=full',async({get,change,frame})=>{
+    const diagram=get('dc-diagram'),motion=get('dc-flow-motion');
+    assert.equal(diagram.attrs['data-flow-running'],'true');
+    get('dc-cursor').value=181;get('dc-cursor').dispatch('input');assert.equal(diagram.attrs['data-flow-running'],'true');
+    motion.click();assert.equal(diagram.attrs['data-flow-running'],'false');
+    get('dc-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'false');
+    get('dc-zoom').click();assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'false');
+    motion.click();get('dc-play').click();assert.equal(diagram.attrs['data-flow-running'],'true');assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'true');
+    change('dc-speed','.5');assert.match(diagram.innerHTML,/--flow-duration:0.9s/);
+  });
+});
+test('Feedback shortcut selects a real negative-power instant and does not invent feedback for R loads',async()=>{
+  await app('?circuit=full&l=50&cursor=90',async({get,change})=>{
+    assert.equal(get('dc-see-feedback').disabled,false);
+    get('dc-flow-motion').click();get('dc-see-feedback').click();
+    assert.equal(get('dc-play').attrs['aria-pressed'],'false');
+    assert.equal(get('dc-diagram').attrs['data-flow-running'],'true');
+    assert.match(get('dc-diagram').innerHTML,/data-flow-mode="feedback"/);
+    assert.match(get('dc-flow-direction').textContent,/VD/);assert.match(get('dc-motion-state').textContent,/回馈/);
+    const angle=get('dc-cursor').value;change('dc-p-l',0);
+    assert.equal(get('dc-see-feedback').disabled,true);get('dc-see-feedback').click();assert.equal(get('dc-cursor').value,angle);
+    assert.doesNotMatch(get('dc-diagram').innerHTML,/data-flow-mode="feedback"/);
   });
 });

@@ -50,7 +50,7 @@ test('Active inversion keeps playing during touch scroll, switches to half speed
   const play=get('inverter-play'),canvas=get('inverter-canvas');play.click();frame(0);frame(100);
   const normal=Number(get('inverter-cursor').value);assert.ok(Math.abs(normal-176-7.2)<1e-7);
   change('inverter-speed','0.5');frame(200);frame(300);const slow=Number(get('inverter-cursor').value);assert.ok(Math.abs(slow-normal-3.6)<1e-7);
-  assert.match(get('inverter-diagram').innerHTML,/dur="2.4s"/);assert.ok(history.at(-1).includes('speed=0.5'));
+  assert.match(get('inverter-diagram').innerHTML,/--flow-duration:0.9s/);assert.ok(history.at(-1).includes('speed=0.5'));
   canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:7,clientX:200,clientY:50});
   canvas.dispatch('pointermove',{pointerType:'touch',pointerId:7,clientX:200,clientY:150});canvas.dispatch('pointercancel');
   frame(400);assert.equal(play.attrs['aria-pressed'],'true');assert.ok(Number(get('inverter-cursor').value)>slow);
@@ -149,5 +149,35 @@ test('A zero-L transfer keeps the RE solver without replacing parameters or rewr
  await page('inverter','?'+q,async({navigations,history})=>{
   assert.equal(navigations.length,1);assert.ok(navigations[0].startsWith('./inverter-ideal.html?'));
   const restored=new URLSearchParams(navigations[0].split('?')[1]);assert.equal(restored.get('l'),'0');assert.equal(restored.get('e'),'-400');assert.equal(restored.get('timeAxis'),'1');assert.equal(history.length,0);
+ });
+});
+test('Active inversion flow remains visible at a selected instant and can be paused independently',async()=>{
+ await page('inverter','?circuit=bridge',async({get,change,frame})=>{
+  const diagram=get('inverter-diagram'),motion=get('inv-flow-motion');assert.equal(diagram.attrs['data-flow-running'],'true');
+  change('inverter-cursor',176,'input');assert.equal(diagram.attrs['data-flow-running'],'true');
+  motion.click();assert.equal(diagram.attrs['data-flow-running'],'false');
+  get('inverter-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'false');
+  motion.click();get('inverter-play').click();assert.equal(diagram.attrs['data-flow-running'],'true');
+ });
+});
+test('Every rectifier and ideal-inverter page includes continuous flow with independent pause and half speed',async()=>{
+ for(const name of ['index','inverter-ideal'])await page(name,name==='index'?'':'?'+query(),async({get,change,frame})=>{
+  for(const circuit of (name==='index'?['half','bridge','semi','threeHalf','threeBridge']:['bridge','threeHalf','threeBridge'])){
+   change('mobile-circuit',circuit);
+   let displayed=false;
+   for(const angle of [90,150,210,270]){change('cursor',angle,'input');if(get('circuit-diagram').innerHTML.includes('class="dc-flow-stream"')){displayed=true;break;}}
+   assert.ok(displayed,circuit);assert.equal(get('circuit-diagram').attrs['data-flow-running'],'true');
+  }
+  change('cursor',150,'input');change('playback-speed','.5');assert.match(get('circuit-diagram').innerHTML,/--flow-duration:0.9s/);
+  get('rect-flow-motion').click();assert.equal(get('circuit-diagram').attrs['data-flow-running'],'false');
+  get('play').click();frame(0);frame(100);assert.equal(get('circuit-diagram').attrs['data-flow-running'],'false');
+  get('play').click();get('rect-flow-motion').click();assert.equal(get('circuit-diagram').attrs['data-flow-running'],'true');
+ });
+});
+test('Both active-inverter views can select and display a true feedback current path',async()=>{
+ for(const name of ['inverter','inverter-ideal'])await page(name,'?'+query(),async({get})=>{
+  const prefix=name==='inverter'?'inv':'rect';assert.equal(get(prefix+'-see-feedback').disabled,false);
+  get(prefix+'-see-feedback').click();assert.match(get(name==='inverter'?'inverter-diagram':'circuit-diagram').innerHTML,/data-flow-mode="feedback"/);
+  assert.match(get(prefix+'-flow-direction').textContent,/回馈/);
  });
 });

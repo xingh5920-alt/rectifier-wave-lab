@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {advancePlayback,bindProbeGestures,playbackRate,syncSvgPlayback,withPlaybackRate} from '../dist/playback.js';
+import {defaultFlowMotion,advancePlayback,bindProbeGestures,playbackRate,syncSvgPlayback,withPlaybackRate} from '../dist/playback.js';
 test('Half-speed advances exactly half as far, wraps continuously and leaves electrical frequency independent',()=>{
   assert.equal(advancePlayback(10,100,.5,4000,720)-10,(advancePlayback(10,100,1,4000,720)-10)/2);
   assert.equal(advancePlayback(718,100,.5,4000,720),2.5);
@@ -27,7 +27,14 @@ test('Mouse hovering cannot move a playing probe; mouse dragging still pauses an
   listeners.get('pointerdown')({pointerType:'mouse',pointerId:7,button:0});listeners.get('pointermove')({pointerType:'mouse'});
   assert.equal(paused,1);assert.equal(points,2);
 });
-test('Circuit particles pause and resume together with the waveform timeline',()=>{
-  let pauses=0,starts=0;const container={querySelector:()=>({pauseAnimations:()=>pauses++,unpauseAnimations:()=>starts++})};
-  syncSvgPlayback(container,false);syncSvgPlayback(container,true);assert.equal(pauses,1);assert.equal(starts,1);
+test('Flow has its own explicit pause state, independent of SVG timeline APIs',()=>{
+  const attrs={};const container={setAttribute:(name,value)=>attrs[name]=value};
+  syncSvgPlayback(container,false);assert.equal(attrs['data-flow-running'],'false');
+  syncSvgPlayback(container,true);assert.equal(attrs['data-flow-running'],'true');
+});
+
+test('Reduced-motion preference starts flow stationary but explicit controls can enable it',()=>{
+  const previous=globalThis.window;
+  try{globalThis.window={matchMedia:()=>({matches:true})};assert.equal(defaultFlowMotion(),false);globalThis.window.matchMedia=()=>({matches:false});assert.equal(defaultFlowMotion(),true);}
+  finally{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
 });

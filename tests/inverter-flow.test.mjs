@@ -24,8 +24,16 @@ test('Three-phase animation shows all sharing branches and conserves DC collecto
 });
 test('Half-speed slows the particles and zero or undetermined currents produce no fabricated flow',()=>{
   const p=inverterPreset('bridge'),s=inverterSample(simulateInverter(p),176);
-  assert.match(inverterFlowSVG(s,p,1),/dur="1.2s"/);assert.match(inverterFlowSVG(s,p,.5),/dur="2.4s"/);
-  assert.match(inverterFlowSVG(s,p,.5),/<circle r="3.5"/);
+  assert.match(inverterFlowSVG(s,p,1),/--flow-duration:0.45s/);assert.match(inverterFlowSVG(s,p,.5),/--flow-duration:0.9s/);
+  assert.match(inverterFlowSVG(s,p,.5),/stroke-dasharray="1 21"/);
   assert.equal(inverterFlowSegments({...s,id:0,currents:[0,0,0,0],phaseCurrents:[0]},p).length,0);
   assert.equal(inverterFlowSegments({...s,valid:false},p).length,0);
+});
+test('Active inversion feedback changes the energy indication without reversing the positive DC current',()=>{
+  const p=inverterPreset('bridge'),result=simulateInverter(p),s=Array.from({length:360},(_,a)=>inverterSample(result,a+.5)).find(s=>s.ud<0&&s.id>0);
+  assert.ok(s,'The preset must contain a genuine energy-return interval');
+  assert.ok(s.ud<0&&s.id>0);
+  assert.match(inverterFlowSVG(s,p),/data-flow-mode="feedback"/);
+  assert.deepEqual(inverterFlowSegments(s,p).find(v=>v.id==='dc-top').points,[[258,40],[455,40]]);
+  assert.deepEqual(inverterFlowSegments({...s,ud:-s.ud},p),inverterFlowSegments(s,p));
 });
