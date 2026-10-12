@@ -1,14 +1,14 @@
 // Textbook inverter models. Angles are electrical degrees; L and C use SI units.
 export const TOPOLOGIES = [
   {id:'half',name:'单相半桥电压型',figure:'图 4-6',kind:'vsi',sub:'分压电容 · 180° 导电'},
-  {id:'full',name:'单相全桥电压型',figure:'180° 导电',kind:'vsi',sub:'全桥 · 方波输出'},
+  {id:'full',name:'单相全桥电压型',figure:'方波 / 移相',kind:'vsi',sub:'输出脉宽 θ · 连续可调'},
   {id:'phase',name:'单相全桥移相调压',figure:'图 4-7',kind:'vsi',sub:'脉宽 θ · 三电平输出'},
   {id:'threeV',name:'三相桥式电压型',figure:'图 4-9 / 4-10',kind:'vsi',sub:'180° 导电 · 浮置星点'},
   {id:'parallel',name:'单相并联谐振电流型',figure:'图 4-12 / 4-13',kind:'csi',sub:'R-L 支路并联 C · 负载换流'},
   {id:'threeI',name:'三相串联二极管式',figure:'图 4-14 / 4-15',kind:'csi',sub:'120° 导通 · 强迫换流结构'}
 ];
 export const DEFAULTS = {
-  half:{ud:200,r:20,l:50,f:50}, full:{ud:200,r:20,l:50,f:50},
+  half:{ud:200,r:20,l:50,f:50}, full:{ud:200,r:20,l:50,f:50,theta:180},
   phase:{ud:200,r:20,l:50,f:50,theta:120}, threeV:{ud:300,r:20,l:50,f:50},
   parallel:{id:4,r:8,l:10,c:12,f:1000,gamma:8,tq:20,pulse:8},
   threeI:{id:4,r:2,l:5,f:50,gamma:8,em:80,phi:30,pulse:8}
@@ -23,7 +23,7 @@ export function parameters(type,input={}){
   p.r=safe(p.r,d.r,.1,1000);p.l=safe(p.l,d.l,type==='parallel'?1:0,2000);
   p.f=safe(p.f,d.f,type==='parallel'?100:1,type==='parallel'?2500:1000);
   p.ud=safe(p.ud,200,1,1000);p.id=safe(p.id,4,.1,100);
-  p.theta=safe(p.theta,120,0,180);p.c=safe(p.c,12,.1,200);
+  p.theta=safe(p.theta,d.theta??120,0,180);p.c=safe(p.c,12,.1,200);
   p.gamma=safe(p.gamma,8,type==='threeI'?.5:0,type==='threeI'?30:60);
   p.tq=safe(p.tq,20,0,200);p.em=safe(p.em,80,0,1000);p.phi=safe(p.phi,30,-80,80);
   p.pulse=safe(p.pulse,8,.5,30);return p;
@@ -33,7 +33,7 @@ export function voltageState(type,p,angle){
   const a=mod(angle);
   if(type==='half')return {g:[square(a),1-square(a)],u:p.ud*(square(a)-.5)};
   if(type==='full'||type==='phase'){
-    const theta=type==='full'?180:p.theta;
+    const theta=p.theta;
     const left=square(a),right=square(a-theta);
     return {g:[left,1-left,right,1-right],u:p.ud*(left-right)};
   }
@@ -61,7 +61,7 @@ function conducting(g,current,upper,lower){
   return g?(current>0?'V'+upper:'VD'+upper):(current<0?'V'+lower:'VD'+lower);
 }
 function vsi(type,p){
-  const edges=type==='threeV'?[0,60,120,180,240,300,360]:[...new Set([0,180,360,...(type==='phase'?[p.theta,180+p.theta]:[])])].sort((a,b)=>a-b);
+  const edges=type==='threeV'?[0,60,120,180,240,300,360]:[...new Set([0,180,360,...(type==='phase'||type==='full'?[p.theta,180+p.theta]:[])])].sort((a,b)=>a-b);
   const count=type==='threeV'?3:1;
   const sol=Array.from({length:count},(_,k)=>rlSolution(a=>{const s=voltageState(type,p,a);return s.phase?s.phase[k]:s.u;},edges,p));
   return angle=>{
@@ -140,5 +140,8 @@ export function buildModel(type,input={},N=3600){
   const voltage=s=>type==='threeV'||type==='threeI'?s.line[0]:s.u;
   const rms=fn=>Math.sqrt(samples.reduce((sum,s)=>sum+fn(s)**2,0)/N);
   const metrics={urms:rms(voltage),irms:rms(s=>s.io),u1:fundamental(samples,voltage),i1:fundamental(samples,s=>s.io),power:samples.reduce((sum,s)=>sum+s.power,0)/N};
+  // Exact voltage metrics preserve continuous pulse-width changes below the sample grid.
+  if(type==='half'){metrics.urms=p.ud/2;metrics.u1=Math.SQRT2*p.ud/Math.PI;}
+  if(type==='full'||type==='phase'){metrics.urms=p.ud*Math.sqrt(p.theta/180);metrics.u1=2*Math.SQRT2*p.ud/Math.PI*Math.sin(rad(p.theta/2));}
   return {type,p,sample,samples,metrics,margin:core.margin,periodError:core.periodError??0,isCSI};
 }

@@ -1,5 +1,6 @@
 import {TOPOLOGIES,DEFAULTS,parameters,buildModel,mod} from './dc-inverter-model.js';
 import {circuitSVG} from './dc-inverter-circuit.js';
+import {dcFormulaMarkup,inlineNotation,notationHTML} from './dc-inverter-formulas.js';
 
 const $=id=>document.getElementById(id);
 const blue='#88c7ff',cyan='#8ae6c5',orange='#f1b071',violet='#c0adf0';
@@ -13,7 +14,9 @@ let probe=initial.has('cursor')&&Number.isFinite(Number(initial.get('cursor')))?
 let playing=false,lastFrame=0,lastProbeUpdate=0,chartWidth=700,chartHeight=500,rows=[],geometry=[],plot={};
 const canvas=$('dc-canvas'),ctx=canvas.getContext('2d'),base=document.createElement('canvas'),baseCtx=base.getContext('2d');
 const fnum=(v,d=1)=>!Number.isFinite(v)?'—':Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e4?(v/1000).toFixed(1)+'k':Math.abs(v)<.5e-5?'0':v.toFixed(d);
-const maths=(name)=>{const [letter,...sub]=name.split('_');return sub.length?`${letter}<sub>${sub.join('_')}</sub>`:name;};
+const maths=inlineNotation;
+const angleText=value=>String(Number(value.toFixed(6)))+'°';
+const adjustableBridge=()=>type==='phase'||type==='full';
 const fieldDefs={ud:['直流母线电压 U_d','V',1,1000],id:['直流电流 I_d','A',.1,100],r:['负载电阻 R','Ω',.1,1000],l:['负载电感 L','mH',0,2000],f:['输出频率 f','Hz',1,1000],theta:['输出脉宽 θ','°',0,180],c:['并联电容 C','µF',.1,200],gamma:['换流重叠角 γ','°',0,60],tq:['晶闸管关断时间 t_q','µs',0,200],em:['相反电势峰值 E_m','V',0,1000],phi:['反电势超前角 φ_E','°',-80,80],pulse:['触发脉冲宽度 δ','°',.5,30]};
 const meta=()=>TOPOLOGIES.find(t=>t.id===type);
 let toastTimer;
@@ -26,7 +29,7 @@ function renderTabs(){
   $('dc-circuit-select').innerHTML=TOPOLOGIES.map(t=>`<option value="${t.id}">${t.name} · ${t.figure}</option>`).join('');$('dc-circuit-select').value=type;
 }
 function renderFields(){
-  $('dc-fields').innerHTML=Object.keys(DEFAULTS[type]).map(key=>{const [name,unit,min,max]=fieldDefs[key];return `<label class="dc-field">${maths(name)}<span><input id="dc-p-${key}" data-param="${key}" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="${p[key]}" aria-label="${name.replaceAll('_',' ')}" aria-describedby="dc-param-note" data-min="${min}" data-max="${max}"><b>${unit}</b>${key==='phi'?'<button type="button" class="dc-sign" data-sign="phi" aria-label="切换反电势超前角正负">±</button>':''}</span></label>`;}).join('');
+  $('dc-fields').innerHTML=Object.keys(DEFAULTS[type]).map(key=>{const [name,unit,min,max]=fieldDefs[key];return `<label class="dc-field"><span class="dc-field-name">${maths(name)}</span><span class="dc-field-input"><input id="dc-p-${key}" data-param="${key}" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="${p[key]}" aria-label="${name.replaceAll('_',' ')}" aria-describedby="dc-param-note" data-min="${min}" data-max="${max}"><b>${unit}</b>${key==='phi'?'<button type="button" class="dc-sign" data-sign="phi" aria-label="切换反电势超前角正负">±</button>':''}</span></label>`;}).join('');
   $('dc-fields').querySelectorAll('[data-param]').forEach(input=>{
     const commit=()=>{
       const key=input.dataset.param,raw=input.value.trim().replace(/[，,]/g,'.');
@@ -34,12 +37,29 @@ function renderFields(){
       const next=parameters(type,{...p,[key]:Number(raw)});input.value=next[key];
       if(next[key]===p[key])return;p=next;saved.set(type,{...p});recompute();writeUrl();
     };
+    if(input.dataset.param==='theta'||input.dataset.param==='pulse')input.addEventListener('input',()=>{
+      const key=input.dataset.param,raw=input.value.trim().replace(/[，,]/g,'.');
+      if(!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw))return;
+      const next=parameters(type,{...p,[key]:Number(raw)});
+      if(next[key]!==Number(raw)||next[key]===p[key])return;
+      p=next;saved.set(type,{...p});recompute();writeUrl();
+    });
     input.addEventListener('change',commit);input.addEventListener('blur',commit);
     input.addEventListener('focus',()=>{$('dc-input-toolbar').hidden=window.innerWidth>900;positionToolbar();});
     input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();commit();input.blur();$('dc-input-toolbar').hidden=true;}});
   });
   $('dc-fields').querySelectorAll('[data-sign]').forEach(b=>b.addEventListener('click',()=>{p.phi=-p.phi;const input=$('dc-p-phi');if(input)input.value=p.phi;recompute();writeUrl();}));
-  $('dc-angle-control').hidden=type!=='phase';$('dc-theta-range').value=p.theta;$('dc-theta-value').textContent=fnum(p.theta,0)+'°';
+  syncAngles();
+}
+function syncAngles(){
+  $('dc-angle-control').hidden=!adjustableBridge();
+  $('dc-theta-range').value=p.theta;$('dc-theta-value').textContent=angleText(p.theta);
+  $('dc-pulse-control').hidden=!model.isCSI;
+  $('dc-pulse-range').value=p.pulse;$('dc-pulse-value').textContent=angleText(p.pulse);
+}
+function changeAngle(key,value){
+  p=parameters(type,{...p,[key]:Number(value)});saved.set(type,{...p});
+  const input=$('dc-p-'+key);if(input)input.value=p[key];recompute();writeUrl();
 }
 function select(next){
   if(!DEFAULTS[next])return;saved.set(type,{...p});type=next;p=parameters(type,saved.get(type));
@@ -47,8 +67,9 @@ function select(next){
 }
 function recompute(){
   model=buildModel(type,p);$('dc-title').textContent=meta().name;$('dc-figure').textContent=meta().figure;
-  $('dc-theta-range').value=p.theta;$('dc-theta-value').textContent=fnum(p.theta,0)+'°';
-  renderExplanation();renderMetrics();buildRows();drawChart();updateProbe();
+  syncAngles();
+  if(type==='full')$('dc-figure').textContent=p.theta===180?'180° 导电':'图 4-7 · 移相调压';
+  renderMetrics();renderExplanation();buildRows();drawChart();updateProbe();
 }
 function renderMetrics(){
   const m=model.metrics;$('dc-urms').textContent=fnum(m.urms);$('dc-irms').textContent=fnum(m.irms,2);
@@ -59,21 +80,20 @@ function renderMetrics(){
 function renderExplanation(){
   const sourceText='<p>输入 U_d 是直流母线电压，u_o 是负载端瞬时电压，不能把直流母线电压当成交流有效值。器件理想，无死区和压降，直流电容足够大。L=0 时为纯电阻；L&gt;0 时按 L di/dt + Ri = u 精确求周期稳态。</p><p>V 表示全控开关管，VD 为反并联二极管。高电平只表示门极要求导通；实际导通的是开关管还是二极管由电流方向决定。驱动行使用归一化高、低电平，不表示实际栅极电压值。</p>';
   const descriptions={
-    half:{formula:'u_o = ± U_d/2；U_o,rms = U_d/2<br>U_o1,rms = √2 U_d/π',text:'上管与下管交替给负载施加正、负电压。换向瞬间电感电流保持连续，先由反并联二极管续流，电流过零后才转为开关管导通。',note:'两只分压电容各承受 U_d/2；直流中点 N′ 就是负载返回端。'},
-    full:{formula:'u_o = ± U_d；U_o,rms = U_d<br>U_o1,rms = 2√2 U_d/π',text:'V1/V4 与 V2/V3 两个对角组合交替工作，每组驱动 180°。相同 U_d 下，全桥的输出电压幅值为半桥的两倍。',note:'电压翻转后，电流不立即翻转；两只二极管先向直流侧回馈电感能量。'},
-    phase:{formula:'u_o ∈ {+U_d, 0, −U_d}<br>U_o,rms = U_d √(θ/180°)<br>U_o1,rms = (2√2 U_d/π) sin(θ/2)',text:'每个桥臂仍用互补的 180° 驱动。右桥臂相对左桥臂延后 θ，正、负输出电压脉宽各为 θ；同侧两管获得高电平时，输出电压为零。θ=0° 时无交流输出，θ=180° 时成为全桥方波。',note:'在零电压区，RL 电流通过一个开关管和另一桥臂的二极管在桥内续流；纯 R 负载此时没有电流。'},
-    threeV:{formula:'u_UN′ = (2S_U−1) U_d/2<br>u_NN′ = (u_UN′+u_VN′+u_WN′)/3<br>u_UN = u_UN′−u_NN′；u_UV = u_UN′−u_VN′<br>U_UV,rms = √(2/3) U_d；U_UV1,rms = √6 U_d/π',text:'每只开关管的驱动宽度为 180°，各相依次相差 120°。极点对直流中点的电压是 ±U_d/2；负载星点浮置后，相电压出现 ±U_d/3、±2U_d/3 四种电平，而线电压为 +U_d、0、−U_d。',note:'U、V、W 使用红、绿、蓝区分。平衡星形负载满足 i_U+i_V+i_W=0；直流侧电流由三个正母线桥臂电流相加得到。'}
+    half:{text:'上管与下管交替给负载施加正、负电压。换向瞬间电感电流保持连续，先由反并联二极管续流，电流过零后才转为开关管导通。',note:'两只分压电容各承受 U_d/2；直流中点 N′ 就是负载返回端。'},
+    full:{text:'V1/V4 与 V2/V3 两个对角组合交替工作，每组驱动 180°。相同 U_d 下，全桥的输出电压幅值为半桥的两倍。',note:'电压翻转后，电流不立即翻转；两只二极管先向直流侧回馈电感能量。'},
+    phase:{text:'每个桥臂仍用互补的 180° 驱动。右桥臂相对左桥臂延后 θ，正、负输出电压脉宽各为 θ；同侧两管获得高电平时，输出电压为零。θ=0° 时无交流输出，θ=180° 时成为全桥方波。',note:'在零电压区，RL 电流通过一个开关管和另一桥臂的二极管在桥内续流；纯 R 负载此时没有电流。'},
+    threeV:{text:'每只开关管的驱动宽度为 180°，各相依次相差 120°。极点对直流中点的电压是 ±U_d/2；负载星点浮置后，相电压出现 ±U_d/3、±2U_d/3 四种电平，而线电压为 +U_d、0、−U_d。',note:'U、V、W 使用红、绿、蓝区分。平衡星形负载满足 i_U+i_V+i_W=0；直流侧电流由三个正母线桥臂电流相加得到。'}
   };
   $('dc-status').classList.remove('warning');$('dc-margin').hidden=type!=='parallel';
   if(!model.isCSI){
-    const info=descriptions[type];$('dc-formulas').innerHTML=info.formula;$('dc-explanation').textContent=info.text;$('dc-energy').textContent=info.note;
+    const info=descriptions[type==='full'&&p.theta<180?'phase':type];$('dc-explanation').textContent=info.text;$('dc-energy').textContent=info.note;
     $('dc-assumptions').innerHTML=sourceText+(type==='threeV'?'<p>三相 R、L 相等，N 为负载星点，N′ 为直流理想中点，两者不相连。图中交叉而无连接点的导线不相连。</p>':'');
     $('dc-param-note').textContent='L=0：纯电阻；L>0：阻感。频率调节的是逆变器输出频率。';
     $('dc-status').textContent=p.l===0?'纯电阻负载：电流与输出电压同形。':'周期稳态 RL 电流：按实际电流方向识别 V / VD 导通。';
     $('dc-model-badge').textContent='理想器件 · 周期稳态';
   }else if(type==='parallel'){
     const m=model.margin;
-    $('dc-formulas').innerHTML='C du_o/dt = i_o − i_RL；L di_RL/dt = u_o − R i_RL<br>t_s = t_γ + t_β；φ = γ/2 + β<br>可靠关断需要 t_β > t_q';
     $('dc-explanation').textContent='直流侧 L_d 很大，使 I_d 近似恒定。VT1/VT4 和 VT2/VT3 交替工作，向并联负载注入正、负电流。C 与 R-L 支路决定输出电压；负载呈容性时电流超前电压，给退出导通的晶闸管留出反向偏置时间。';
     $('dc-energy').textContent='改变 f、R、L 或 C 可以观察电压与电流的相位变化。改变 γ 则改变器件电流交接的持续时间，检查换流结束后是否仍有足够反压。';
     $('dc-assumptions').innerHTML='<p>本模块按图 4-12 的 C ∥ (R+L) 负载求周期解。γ 是指定的换流过渡角，换流区 i_o 由 −I_d 到 +I_d（或反向）线性变化；未动态求解换流电感 L_T 或晶闸管恢复过程。</p><p>β 是退出器件电流降为零后至其反压结束的角度，按输出电压实际过零点测量；它不是有源逆变页的 180°−α。t_γ、t_β、t_s 对应图 4-13 的换流、反压和触发引前时间。</p><p>器件阻断电压与 u_AB 是理想分段参考。反压时间不足时仍显示指定驱动的参考波形，并明确标为换流条件不足；该参考不代表晶闸管已成功关断后的真实失败波形。</p>';
@@ -82,12 +102,14 @@ function renderExplanation(){
     $('dc-status').classList.toggle('warning',!m.safe);$('dc-model-badge').textContent=m.safe?'负载换流 · 近似参考':'换流条件不足 · 参考';
     $('dc-param-note').textContent='L 用 mH，C 用 µF。仅在整体负载呈容性、且反压时间充足时才能按此过程可靠换流。';
   }else{
-    $('dc-formulas').innerHTML='i_U + i_V + i_W = 0；每相正、负导通各 120°<br>I_U1,rms ≈ (√6/π) I_d ≈ 0.78 I_d（忽略 γ）<br>u_k = R i_k + L di_k/dt + E_m sin(ωt+φ_k)<br>u_UV = u_U − u_V；φ_k 依次相差 120°';
     $('dc-explanation').textContent='上桥臂 VT1、VT3、VT5 和下桥臂 VT4、VT6、VT2 轮流配对；触发顺序为 VT1→VT2→VT3→VT4→VT5→VT6，每隔 60° 触发一次。各桥臂串联二极管，桥臂间的 C1～C6 为强迫换流电容。';
     $('dc-energy').textContent='直流电流决定各相电流脉冲幅值。电动机反电势、R 与 L 决定线电压；有限 γ 下，换流的 di/dt 使线电压出现脉冲。将 E_m 设为 0 可比较无反电势的 R-L 等效负载。';
     $('dc-assumptions').innerHTML='<p>本模块是 120° 电流序列与三相对称电动机负载的教学近似。每相用 R、L 和正弦反电势等效，E_m 是相反电势峰值；φ_E 是反电势相对相电流基波的超前角。相电流基波由理想 120° 序列确定。</p><p>换流区按 γ 进行线性电流交接，保持 i_U+i_V+i_W=0。为避免把有限 L 的电流跃变画成有限电压，γ 最小为 0.5°。图 4-14 的近正弦线电压取决于电动机参数，并非对所有 R-L 负载都成立。</p><p>主电路保留图 4-15 的串联二极管与换流电容位置；未求解 C1～C6 的充放电和晶闸管恢复，不能把此近似当作完整 ASCI 换流动态模型。交叉而无连接点的导线不相连。</p>';
     $('dc-param-note').textContent='I_d 近似恒定。γ：0.5°～30°；反电势超前角可用 ± 按钮切换正负。';$('dc-status').textContent='120° 电流序列 · 有限 γ 线性交接 · 电动机反电势等效负载。';$('dc-model-badge').textContent='强迫换流结构 · 教学近似';
   }
+  $('dc-formulas').innerHTML=dcFormulaMarkup(type,p);
+  for(const id of ['dc-explanation','dc-energy','dc-param-note','dc-status','dc-urms-label'])$(id).innerHTML=inlineNotation($(id).textContent);
+  for(const id of ['dc-assumptions','dc-margin'])$(id).innerHTML=notationHTML($(id).innerHTML);
   $('dc-phase-legend').innerHTML=(type==='threeV'||type==='threeI')?['U 相','V 相','W 相'].map((s,k)=>`<span style="color:${['#c84a44','#188768','#3979d2'][k]}"><i></i>${s}</span>`).join(''):'<span style="color:#4d8cbf"><i></i>电压</span><span style="color:#3c9a77"><i></i>电流</span><span style="color:#aa7d4f"><i></i>另一组器件</span>';
   $('dc-device-key').textContent=model.isCSI?'VT：晶闸管 · VD：二极管':'V：开关管 · VD：反并联二极管';
 }
@@ -170,9 +192,9 @@ function updateProbe(){
   const s=model.sample(probe);$('dc-cursor').value=probe;$('dc-cursor').max=cycles*360;
   const stamp=probe.toFixed(1)+'°'+(timeAxis?' · '+fnum(probe/(360*p.f)*1000,2)+' ms':'');$('dc-cursor-value').textContent=timeAxis?fnum(probe/(360*p.f)*1000,2)+' ms':probe.toFixed(1)+'°';$('dc-probe-angle').textContent=stamp;
   $('dc-active').textContent=s.active.length?s.active.join(' + ')+' 导通':'负载电流为零';
-  $('dc-probe-note').textContent=type==='parallel'?(s.overlap?'换流区：前后两组晶闸管分担直流电流。':'稳定导通区：查看退出组的反向电压。'):type==='threeI'?(s.overlap?'换流区：电流在相邻桥臂之间交接。':'稳定导通区：一只上桥臂与一只下桥臂承载 I_d。'):Math.abs(s.io)<1e-8&&type!=='threeV'?'此时没有负载电流。':Math.abs(s.u)<1e-8&&type==='phase'?'零电压区：电流在桥内续流，i_d=0。':s.power<0?'瞬时能量回馈：负载电感通过二极管向直流侧送能。':'直流侧向负载供能；实际器件由电流方向决定。';
+  $('dc-probe-note').textContent=type==='parallel'?(s.overlap?'换流区：前后两组晶闸管分担直流电流。':'稳定导通区：查看退出组的反向电压。'):type==='threeI'?(s.overlap?'换流区：电流在相邻桥臂之间交接。':'稳定导通区：一只上桥臂与一只下桥臂承载 I_d。'):Math.abs(s.io)<1e-8&&type!=='threeV'?'此时没有负载电流。':Math.abs(s.u)<1e-8&&adjustableBridge()?'零电压区：电流在桥内续流，i_d=0。':s.power<0?'瞬时能量回馈：负载电感通过二极管向直流侧送能。':'直流侧向负载供能；实际器件由电流方向决定。';
   const values=type==='threeV'||type==='threeI'?[['u_UV',s.line[0],'V'],['i_U',s.i[0],'A'],['i_V',s.i[1],'A'],['i_W',s.i[2],'A']]:[['u_o',s.u,'V'],['i_o',s.io,'A'],['i_d',s.dc,'A'],['p_o',s.power,'W']];
-  $('dc-probe-values').innerHTML=values.map(([name,v,unit])=>`<span>${maths(name)}<b>${fnum(v,unit==='A'?2:1)} ${unit}</b></span>`).join('');
+  $('dc-probe-values').innerHTML=values.map(([name,v,unit])=>`<span class="dc-probe-value"><span class="dc-probe-name">${maths(name)}</span><b>${fnum(v,unit==='A'?2:1)} ${unit}</b></span>`).join('');
   const svg=circuitSVG(type,s,p);$('dc-diagram').innerHTML=svg;if($('dc-zoom-dialog').open)$('dc-zoom-diagram').innerHTML=svg;
   drawProbe();
 }
@@ -180,9 +202,10 @@ function stop(){playing=false;$('dc-play').textContent='▶ 播放';$('dc-play')
 function frame(now){if(!playing)return;if(lastFrame)probe=(probe+(now-lastFrame)/4000*360)%(cycles*360);lastFrame=now;if(now-lastProbeUpdate>70){updateProbe();lastProbeUpdate=now;}else drawProbe();requestAnimationFrame(frame);}
 $('dc-circuit-select').addEventListener('change',e=>select(e.target.value));
 $('dc-reset').addEventListener('click',()=>{p=parameters(type,DEFAULTS[type]);saved.set(type,{...p});renderFields();recompute();writeUrl();});
-$('dc-theta-range').addEventListener('input',e=>{p.theta=Number(e.target.value);const input=$('dc-p-theta');if(input)input.value=p.theta;recompute();});
+$('dc-theta-range').addEventListener('input',e=>changeAngle('theta',e.target.value));
+$('dc-pulse-range').addEventListener('input',e=>changeAngle('pulse',e.target.value));
 $('dc-theta-range').addEventListener('change',writeUrl);
-document.querySelectorAll('[data-theta]').forEach(b=>b.addEventListener('click',()=>{p.theta=Number(b.dataset.theta);const input=$('dc-p-theta');if(input)input.value=p.theta;recompute();writeUrl();}));
+document.querySelectorAll('[data-theta]').forEach(b=>b.addEventListener('click',()=>changeAngle('theta',b.dataset.theta)));
 $('dc-show-gates').addEventListener('change',()=>{buildRows();drawChart();});$('dc-show-devices').addEventListener('change',()=>{buildRows();drawChart();});
 function setCycles(value){cycles=value;probe=Math.min(probe,cycles*360);$('dc-cycle-one').classList.toggle('selected',value===1);$('dc-cycle-two').classList.toggle('selected',value===2);$('dc-cycle-one').setAttribute('aria-pressed',value===1);$('dc-cycle-two').setAttribute('aria-pressed',value===2);drawChart();updateProbe();writeUrl();}
 $('dc-cycle-one').addEventListener('click',()=>setCycles(1));$('dc-cycle-two').addEventListener('click',()=>setCycles(2));
@@ -190,7 +213,7 @@ $('dc-axis').addEventListener('click',()=>{timeAxis=!timeAxis;$('dc-axis').textC
 $('dc-cursor').addEventListener('input',e=>{probe=Number(e.target.value);updateProbe();});$('dc-cursor').addEventListener('change',writeUrl);
 canvas.addEventListener('pointerdown',event=>{const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*chartWidth/r.width;probe=Math.min(cycles*360,Math.max(0,(x-plot.left)/(plot.right-plot.left)*cycles*360));stop();updateProbe();writeUrl();});
 $('dc-play').addEventListener('click',()=>{if(playing)stop();else{playing=true;lastFrame=0;$('dc-play').textContent='Ⅱ 暂停';$('dc-play').setAttribute('aria-pressed','true');requestAnimationFrame(frame);}});
-$('dc-step').addEventListener('click',()=>{stop();const local=mod(probe),events=type==='phase'?[0,p.theta,180,180+p.theta,360]:type==='threeV'||type==='threeI'?[0,60,120,180,240,300,360]:[0,180,360];const next=events.find(a=>a>local+.05)??360;probe=(Math.floor(probe/360)*360+next+.1)%(cycles*360);updateProbe();writeUrl();});
+$('dc-step').addEventListener('click',()=>{stop();const local=mod(probe),events=adjustableBridge()?[0,p.theta,180,180+p.theta,360]:type==='threeV'||type==='threeI'?[0,60,120,180,240,300,360]:[0,180,360];const next=events.find(a=>a>local+.05)??360;probe=(Math.floor(probe/360)*360+next+.1)%(cycles*360);updateProbe();writeUrl();});
 $('dc-zoom').addEventListener('click',()=>{$('dc-zoom-diagram').innerHTML=circuitSVG(type,model.sample(probe),p);$('dc-zoom-dialog').showModal();});$('dc-close-zoom').addEventListener('click',()=>$('dc-zoom-dialog').close());
 function positionToolbar(){const v=window.visualViewport;$('dc-input-toolbar').style.bottom=Math.max(12,v?window.innerHeight-v.height-v.offsetTop+12:12)+'px';}
 $('dc-input-toolbar').addEventListener('pointerdown',event=>event.preventDefault());
