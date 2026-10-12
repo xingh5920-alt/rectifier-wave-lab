@@ -11,7 +11,7 @@
   <script type="module" src="./inverter.js"></script>
 </head>
 <body class="inverter-page">
-  <header class="topbar"><a class="brand" href="./"><span class="brand-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17h5l4-10 6 18 5-12 3 4h3"/></svg></span><span>波形实验室<small>WAVEFORM LAB</small></span></a><nav class="lab-tabs" aria-label="选择实验"><a id="inv-rectifier-return" href="./">可控整流</a><a class="active" aria-current="page" href="./inverter.html">有源逆变</a></nav></header>
+  <header class="topbar"><a class="brand" href="./"><span class="brand-icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 17h5l4-10 6 18 5-12 3 4h3"/></svg></span><span>波形实验室<small>WAVEFORM LAB</small></span></a><nav class="lab-tabs" aria-label="选择实验"><a id="inv-rectifier-return" href="./">可控整流</a><a class="active" aria-current="page" href="./inverter.html">有源逆变</a><a href="./dc-inverter.html">逆变电路</a></nav></header>
   <main class="inverter-main">
     <div class="inv-heading"><div><div class="eyebrow">DC → AC / LINE COMMUTATION</div><h1>有源逆变，看到换相的全过程。</h1><p id="inv-circuit-sub">三相半波 · 交流侧电感与换相重叠</p></div><span class="inv-chapter">独立实验 <b>06</b></span></div>
     <nav class="inv-circuit-tabs" aria-label="选择有源逆变电路"><button id="inv-circuit-bridge" data-inv-circuit="bridge" aria-pressed="false"><span>单相全控桥</span><small>4 个晶闸管 · 双脉波</small></button><button id="inv-circuit-threeHalf" data-inv-circuit="threeHalf" class="selected" aria-pressed="true"><span>三相半波</span><small>3 个晶闸管 · 三脉波</small></button><button id="inv-circuit-threeBridge" data-inv-circuit="threeBridge" aria-pressed="false"><span>三相全控桥</span><small>6 个晶闸管 · 六脉波</small></button></nav><p class="inv-switch-hint">每种电路分别保留已调参数；“正常换相”可载入对应示例。</p>
