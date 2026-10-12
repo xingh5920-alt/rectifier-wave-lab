@@ -22,6 +22,21 @@ test('Phase-shift pulse width controls RMS and fundamental, including both endpo
     if(theta===0)assert.equal(m.sample(0).active.length,0);
   }
 });
+test('Full-bridge decimal widths match phase control and keep RL current continuous at fractional edges',()=>{
+  for(const theta of [0,.01,60.125,120.25,179.999,180]){
+    const full=buildModel('full',{theta,l:50}),phase=buildModel('phase',{theta,l:50});
+    near(full.metrics.urms,200*Math.sqrt(theta/180),1e-12);
+    near(full.metrics.u1,2*Math.SQRT2*200/Math.PI*Math.sin(theta*Math.PI/360),1e-12);
+    for(const angle of [0,theta/2,theta+.001,180+theta/2]){
+      near(full.sample(angle).u,phase.sample(angle).u);near(full.sample(angle).io,phase.sample(angle).io);
+    }
+    if(theta>0&&theta<180){
+      assert.equal(full.sample(theta/2).u,200);assert.equal(full.sample(theta+.0001).u,0);
+      near(full.sample(theta-.000001).io,full.sample(theta+.000001).io,1e-5);
+    }
+  }
+  assert.equal(buildModel('full').p.theta,180);
+});
 test('Finite-L VSI current is continuous at switch events and obeys its differential equation',()=>{
   for(const type of ['half','full','phase','threeV']){
     const m=buildModel(type);const dt=1e-5;

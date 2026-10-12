@@ -60,6 +60,44 @@ test('Invalid numeric drafts are restored and out-of-range edits are bounded bef
     get('dc-p-l').focus();assert.equal(get('dc-input-toolbar').hidden,false);get('dc-input-done').click();assert.equal(get('dc-input-toolbar').hidden,true);
   });
 });
+test('Full-bridge numeric editing and a continuous slider synchronize decimal widths, metrics and saved links',async()=>{
+  await app('?circuit=full',async({get,change,history})=>{
+    assert.equal(get('dc-angle-control').hidden,false);assert.equal(get('dc-theta-range').attrs.step,'any');
+    assert.equal(get('dc-theta-value').textContent,'180°');
+    const input=get('dc-p-theta');input.value='120.25';input.dispatch('input');
+    assert.equal(get('dc-theta-range').value,'120.25');assert.equal(get('dc-theta-value').textContent,'120.25°');
+    assert.equal(get('dc-urms').textContent,(200*Math.sqrt(120.25/180)).toFixed(1));
+    assert.match(get('dc-figure').textContent,/移相/);assert.ok(history.at(-1).includes('theta=120.25'));
+    const slider=get('dc-theta-range');slider.value='60.125';slider.dispatch('input');
+    assert.equal(input.value,'60.125');assert.equal(get('dc-theta-value').textContent,'60.125°');
+    change('dc-circuit-select','half');change('dc-circuit-select','full');assert.equal(get('dc-p-theta').value,'60.125');
+    change('dc-p-theta',180);assert.equal(get('dc-figure').textContent,'180° 导电');
+  });
+  await app('?circuit=full&theta=60.125',async({get})=>assert.equal(get('dc-theta-value').textContent,'60.125°'));
+});
+test('Both current-source circuits link decimal trigger pulse input to a continuous slider without corrupting draft input',async()=>{
+  for(const type of ['parallel','threeI'])await app('?circuit='+type+'&pulse=8.25',async({get,history})=>{
+    assert.equal(get('dc-pulse-control').hidden,false);assert.equal(get('dc-pulse-range').attrs.step,'any');
+    assert.equal(get('dc-pulse-value').textContent,'8.25°');
+    const input=get('dc-p-pulse');input.value='12.75';input.dispatch('input');
+    assert.equal(get('dc-pulse-range').value,'12.75');assert.equal(get('dc-pulse-value').textContent,'12.75°');
+    input.value='';input.dispatch('input');assert.equal(input.value,'');assert.equal(get('dc-pulse-range').value,'12.75');
+    input.dispatch('blur');assert.equal(input.value,'12.75');
+    const slider=get('dc-pulse-range');slider.value='4.125';slider.dispatch('input');
+    assert.equal(input.value,'4.125');assert.ok(history.at(-1).includes('pulse=4.125'));
+  });
+});
+test('All six circuits render real equations and keep inline subscripts atomic in fields and probe cells',async()=>{
+  for(const type of ['half','full','phase','threeV','parallel','threeI'])await app('?circuit='+type,async({get})=>{
+    const formulas=get('dc-formulas').innerHTML;assert.match(formulas,/<math\b/);assert.match(formulas,/<msub>/);
+    assert.match(formulas,/<mfrac>/);assert.doesNotMatch(formulas,/\b[uUiI]_[A-Za-z]/);
+    assert.match(get('dc-fields').innerHTML,/class="dc-field-name"/);
+    assert.match(get('dc-probe-values').innerHTML,/<span class="dc-probe-name"><span class="dc-math">[ui]<sub>/);
+    assert.doesNotMatch(get('dc-assumptions').innerHTML,/\b[uUiI]_[A-Za-z]/);
+  });
+  const css=fs.readFileSync(new URL('../dist/dc-inverter.css',import.meta.url),'utf8');
+  assert.ok(css.includes('#dc-probe-values>.dc-probe-value{'));assert.ok(!css.includes('#dc-probe-values span{'));
+});
 test('Current-source UI exposes measured margin and distinguishes incomplete commutation model',async()=>{
   await app('?circuit=parallel',async({get,change})=>{
     assert.equal(get('dc-margin').hidden,false);assert.match(get('dc-margin').innerHTML,/反压时间/);
