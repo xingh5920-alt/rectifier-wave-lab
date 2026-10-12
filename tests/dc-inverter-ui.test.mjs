@@ -145,9 +145,10 @@ test('Flow runs at a frozen waveform instant, with independent pause and zoom co
     assert.equal(diagram.attrs['data-flow-running'],'true');
     get('dc-cursor').value=181;get('dc-cursor').dispatch('input');assert.equal(diagram.attrs['data-flow-running'],'true');
     motion.click();assert.equal(diagram.attrs['data-flow-running'],'false');
-    get('dc-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'false');
+    get('dc-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'true');
+    get('dc-play').click();assert.equal(diagram.attrs['data-flow-running'],'false');
     get('dc-zoom').click();assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'false');
-    motion.click();get('dc-play').click();assert.equal(diagram.attrs['data-flow-running'],'true');assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'true');
+    motion.click();assert.equal(diagram.attrs['data-flow-running'],'true');assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'true');
     change('dc-speed','.5');assert.match(diagram.innerHTML,/--flow-duration:0.9s/);
   });
 });
@@ -163,4 +164,17 @@ test('Feedback shortcut selects a real negative-power instant and does not inven
     assert.equal(get('dc-see-feedback').disabled,true);get('dc-see-feedback').click();assert.equal(get('dc-cursor').value,angle);
     assert.doesNotMatch(get('dc-diagram').innerHTML,/data-flow-mode="feedback"/);
   });
+});
+test('DC pause freezes the chart, main diagram and zoom across rapid restarts and scrolling',async()=>{
+ await app('?circuit=full',async({get,frame})=>{
+  const play=get('dc-play'),flow=get('dc-flow-motion'),diagram=get('dc-diagram'),canvas=get('dc-canvas');get('dc-zoom').click();
+  for(let k=0;k<4;k++){
+   play.click();frame(k*1000);frame(k*1000+100);
+   canvas.dispatch('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:100});canvas.dispatch('pointermove',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});canvas.dispatch('pointercancel');
+   assert.equal(play.attrs['aria-pressed'],'true');assert.equal(diagram.attrs['data-flow-running'],'true');
+   play.click();const angle=get('dc-cursor').value;frame(k*1000+200);assert.equal(get('dc-cursor').value,angle);assert.equal(diagram.attrs['data-flow-running'],'false');assert.equal(get('dc-zoom-diagram').attrs['data-flow-running'],'false');
+  }
+  flow.click();const angle=get('dc-cursor').value;frame(5000);assert.equal(get('dc-cursor').value,angle);assert.equal(diagram.attrs['data-flow-running'],'true');
+  play.click();frame(5100);frame(5200);flow.click();assert.equal(play.attrs['aria-pressed'],'false');const frozen=get('dc-cursor').value;frame(5300);assert.equal(get('dc-cursor').value,frozen);assert.equal(diagram.attrs['data-flow-running'],'false');
+ });
 });

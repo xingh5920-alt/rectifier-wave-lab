@@ -38,3 +38,12 @@ test('Reduced-motion preference starts flow stationary but explicit controls can
   try{globalThis.window={matchMedia:()=>({matches:true})};assert.equal(defaultFlowMotion(),false);globalThis.window.matchMedia=()=>({matches:false});assert.equal(defaultFlowMotion(),true);}
   finally{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;}
 });
+
+test('Hover after pausing cannot scrub time; a cancelled drag cannot keep changing the probe',()=>{
+ const listeners=new Map();let points=0;
+ const canvas={addEventListener:(name,fn)=>listeners.set(name,fn),setPointerCapture(){}};
+ bindProbeGestures(canvas,{pause(){},point:()=>points++,isPlaying:()=>false});
+ listeners.get('pointermove')({pointerType:'mouse'});assert.equal(points,0);
+ listeners.get('pointerdown')({pointerType:'mouse',pointerId:1,button:0});assert.equal(points,1);
+ listeners.get('pointercancel')();listeners.get('pointermove')({pointerType:'mouse'});assert.equal(points,1);
+});

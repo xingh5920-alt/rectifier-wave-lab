@@ -156,8 +156,9 @@ test('Active inversion flow remains visible at a selected instant and can be pau
   const diagram=get('inverter-diagram'),motion=get('inv-flow-motion');assert.equal(diagram.attrs['data-flow-running'],'true');
   change('inverter-cursor',176,'input');assert.equal(diagram.attrs['data-flow-running'],'true');
   motion.click();assert.equal(diagram.attrs['data-flow-running'],'false');
-  get('inverter-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'false');
-  motion.click();get('inverter-play').click();assert.equal(diagram.attrs['data-flow-running'],'true');
+  get('inverter-play').click();frame(0);frame(100);assert.equal(diagram.attrs['data-flow-running'],'true');
+  get('inverter-play').click();assert.equal(diagram.attrs['data-flow-running'],'false');
+  motion.click();assert.equal(diagram.attrs['data-flow-running'],'true');
  });
 });
 test('Every rectifier and ideal-inverter page includes continuous flow with independent pause and half speed',async()=>{
@@ -170,7 +171,7 @@ test('Every rectifier and ideal-inverter page includes continuous flow with inde
   }
   change('cursor',150,'input');change('playback-speed','.5');assert.match(get('circuit-diagram').innerHTML,/--flow-duration:0.9s/);
   get('rect-flow-motion').click();assert.equal(get('circuit-diagram').attrs['data-flow-running'],'false');
-  get('play').click();frame(0);frame(100);assert.equal(get('circuit-diagram').attrs['data-flow-running'],'false');
+  get('play').click();frame(0);frame(100);assert.equal(get('circuit-diagram').attrs['data-flow-running'],'true');
   get('play').click();get('rect-flow-motion').click();assert.equal(get('circuit-diagram').attrs['data-flow-running'],'true');
  });
 });
@@ -179,5 +180,28 @@ test('Both active-inverter views can select and display a true feedback current 
   const prefix=name==='inverter'?'inv':'rect';assert.equal(get(prefix+'-see-feedback').disabled,false);
   get(prefix+'-see-feedback').click();assert.match(get(name==='inverter'?'inverter-diagram':'circuit-diagram').innerHTML,/data-flow-mode="feedback"/);
   assert.match(get(prefix+'-flow-direction').textContent,/回馈/);
+ });
+});
+test('Repeated play/pause freezes both timelines, and hovering never resumes a paused circuit',async()=>{
+ for(const name of ['index','inverter-ideal','inverter'])await page(name,name==='index'?'':'?'+query(),async({get,frame})=>{
+  const active=name==='inverter',play=get(active?'inverter-play':'play'),flow=get(active?'inv-flow-motion':'rect-flow-motion'),diagram=get(active?'inverter-diagram':'circuit-diagram'),cursor=get(active?'inverter-cursor':'cursor'),canvas=get(active?'inverter-canvas':'wave-canvas');
+  for(let k=0;k<4;k++){
+   play.click();frame(k*1000);frame(k*1000+100);assert.equal(diagram.attrs['data-flow-running'],'true');
+   play.click();const angle=cursor.value;assert.equal(diagram.attrs['data-flow-running'],'false');
+   canvas.dispatch('pointermove',{pointerType:'mouse',clientX:500,clientY:180});frame(k*1000+200);assert.equal(cursor.value,angle);assert.equal(play.attrs['aria-pressed'],'false');
+  }
+  flow.click();const angle=cursor.value;frame(5000);assert.equal(cursor.value,angle);assert.equal(diagram.attrs['data-flow-running'],'true');
+  play.click();frame(5100);frame(5200);flow.click();const stopped=cursor.value;frame(5300);assert.equal(cursor.value,stopped);assert.equal(play.attrs['aria-pressed'],'false');assert.equal(diagram.attrs['data-flow-running'],'false');
+ });
+});
+test('Unused three-phase bus sections remain neutral instead of inheriting whole-bus active color',async()=>{
+ await page('index','',async({get,change})=>{
+  change('mobile-circuit','threeBridge');change('alpha',30,'input');change('cursor',250,'input');
+  const svg=get('circuit-diagram').innerHTML;
+  assert.match(get('active-valves').textContent,/VT3.*VT4/);
+  assert.match(svg,/<path class="wire" d="M110 39L450 39" \/>/);
+  assert.ok(!svg.includes('data-flow="top-rail-0"'));assert.ok(svg.includes('data-flow="top-rail-1"'));assert.ok(svg.includes('class="dc-flow-track"'));
+  change('mobile-circuit','threeHalf');change('cursor',200,'input');
+  const half=get('circuit-diagram').innerHTML;assert.match(half,/<path class="wire" d="M282 70L282 204" \/>/);assert.ok(!half.includes('data-flow="collector-lower"'));
  });
 });

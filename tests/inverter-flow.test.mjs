@@ -37,3 +37,21 @@ test('Active inversion feedback changes the energy indication without reversing 
   assert.deepEqual(inverterFlowSegments(s,p).find(v=>v.id==='dc-top').points,[[258,40],[455,40]]);
   assert.deepEqual(inverterFlowSegments({...s,ud:-s.ud},p),inverterFlowSegments(s,p));
 });
+test('Active-inverter shared buses have a neutral base and only actual current segments carry color',async()=>{
+ const {inverterCircuitSvg}=await import('../dist/inverter-circuit.js');
+ for(const circuit of ['threeBridge','threeHalf']){
+  const p=inverterPreset(circuit),result=simulateInverter(p),s=inverterSample(result,250),markup=inverterCircuitSvg(s,p);
+  assert.match(markup,circuit==='threeBridge'?/<g stroke="#aab69f" stroke-width="2"><path d="M110 39H455M110 266H455"\/>/:/<path d="M299 56V186" stroke="#aab69f" stroke-width="2"\/>/);
+  assert.ok(markup.includes('class="dc-flow-track"'));
+ }
+});
+test('Undetermined or zero-current active-inverter states never falsely highlight conducting devices',async()=>{
+ const {inverterCircuitSvg}=await import('../dist/inverter-circuit.js');
+ for(const circuit of ['bridge','threeHalf','threeBridge']){
+  const p=inverterPreset(circuit),s=inverterSample(simulateInverter(p),176);
+  for(const state of [{...s,valid:false},{...s,id:0,currents:s.currents.map(()=>0)}]){
+   const markup=inverterCircuitSvg(state,p);
+   assert.ok(!markup.includes('stroke-width="3" opacity="1"'),circuit);
+  }
+ }
+});

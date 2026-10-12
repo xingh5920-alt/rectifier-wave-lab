@@ -19,7 +19,7 @@ test('Phase-shift zero-voltage interval shows the upper freewheel loop with no D
   const s=buildModel('phase',{theta:90,l:50}).sample(110);
   assert.equal(s.u,0);assert.ok(s.io>0);assert.deepEqual(s.active,['V1','VD3']);
   assert.deepEqual(find('phase',s,'bridge-top').points,[[505,60],[195,60]]);
-  assert.deepEqual(find('phase',s,'leg-3-out').points,[[505,247],[505,175],[547,175],[547,161]]);
+  assert.deepEqual(find('phase',s,'leg-3-out').points,[[505,247],[505,176],[547,176],[547,161]]);
   assert.equal(find('phase',s,'source-top'),undefined);assert.equal(find('phase',s,'source-bottom'),undefined);
   assert.equal(find('phase',s,'leg-2-in'),undefined);assert.equal(find('phase',s,'leg-4-in'),undefined);
 });
@@ -69,4 +69,15 @@ test('Feedback uses the diode channel itself and an orange stream while the load
   for(const n of [2,3]){const device=paths.find(p=>p.id==='leg-'+n+'-device');assert.ok(device);assert.ok(device.points[0][1]>device.points.at(-1)[1]);}
   assert.deepEqual(find('full',s,'load-R').points,[[295,247],[355,247]]);
   const markup=currentFlowSVG('full',s);assert.match(markup,/data-flow-mode="feedback"/);assert.match(markup,/stroke="#d65e19"/);
+});
+test('Diode flow corners exactly follow each circuit bypass wire, with the actual branch current magnitude',()=>{
+ for(const [type,angle,jump,junction,cy,number,x] of [['half',180.1,50,40,320,2,320],['full',180.1,42,43,337,2,195],['phase',150,42,43,133,3,505]]){
+  const s=buildModel(type).sample(angle),wire=find(type,s,'leg-'+number+'-out');assert.ok(wire,type);
+  assert.equal(wire.points[1][1],cy+junction);assert.equal(wire.points[2][0],x+jump);assert.equal(wire.points[2][1],cy+junction);
+  assert.ok(Math.abs(Math.abs(wire.current)-Math.abs(s.io))<1e-9);
+ }
+ const s=buildModel('threeV').sample(64),wire=find('threeV',s,'leg-2-out');assert.ok(wire);
+ assert.deepEqual(wire.points.slice(0,3),[[470,422],[470,392],[515,392]]);
+ assert.ok(Math.abs(Math.abs(wire.current)-Math.abs(s.i[2]))<1e-9);
+ const tiny={...buildModel('half').sample(180.1),io:5e-9,i:[5e-9],dc:0};assert.equal(currentFlowSegments('half',tiny).length,0);
 });
