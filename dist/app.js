@@ -280,10 +280,10 @@ function renderCircuit(probeSample){
     s+=text(118,162,'a','small-label')+text(367,163,'b','small-label');
   }else if(p.circuit==='threeHalf'){
     for(let i=0;i<3;i++){const y=70+i*67,name='VT'+(i+1);s+=line(53,y,282,y,`data-valve="${name}"`)+valve(167,y,0,name)+text(145,y-18,name,'label',`data-valve="${name}"`)+text(29,y+5,['a','b','c'][i],'label');}
-    s+=poly('282,70 282,45 425,45','data-flow="load"')+line(282,70,282,204,'data-flow="load"')+line(53,253,425,253,'data-flow="load"')+text(30,258,'N','label')+loadSvg(425,45,253);
+    s+=poly('282,70 282,45 425,45','data-flow="load"')+line(282,70,282,204)+line(53,253,425,253,'data-flow="load"')+text(30,258,'N','label')+loadSvg(425,45,253);
   }else{
     const top=[1,3,5],bottom=[4,6,2];
-    s+=line(110,39,450,39,'data-flow="load"')+line(110,259,450,259,'data-flow="load"');
+    s+=line(110,39,450,39)+line(110,259,450,259);
     for(let i=0;i<3;i++){const x=110+i*110,t='VT'+top[i],b='VT'+bottom[i];s+=branch(x,149,x,39,t,x+19,97)+branch(x,259,x,149,b,x+19,221);s+=line(x-28,149,x,149)+text(x-45,154,['a','b','c'][i],'label')+`<circle cx="${x}" cy="149" r="3" class="node"/>`;}
     s+=loadSvg(450,39,259)+text(30,292,'U₂：相电压有效值','small-label');
   }
@@ -296,13 +296,14 @@ function animate(now,epoch){
   if(lastTime!==null){cursor=advancePlayback(cursor,now-lastTime,speed,4000,cycles*360);updateProbe();}
   lastTime=now;requestAnimationFrame(next=>animate(next,epoch));
 }
-function togglePlay(){playing=!playing;lastTime=null;const epoch=++playEpoch;$('play-icon').textContent=playing?'Ⅱ':'▶';$('play-text').textContent=playing?'暂停':'播放';$('play').setAttribute('aria-label',playing?'暂停波形导通过程':'播放波形导通过程');$('play').setAttribute('aria-pressed',String(playing));if(playing)requestAnimationFrame(now=>animate(now,epoch));}
+function togglePlay(){playing=!playing;setFlowMotion(playing);lastTime=null;const epoch=++playEpoch;$('play-icon').textContent=playing?'Ⅱ':'▶';$('play-text').textContent=playing?'暂停':'播放';$('play').setAttribute('aria-label',playing?'暂停波形导通过程':'播放波形导通过程');$('play').setAttribute('aria-pressed',String(playing));if(playing)requestAnimationFrame(now=>animate(now,epoch));}
 function pause(){if(playing)togglePlay();}
 function setCursorFromPointer(e){const rect=canvas.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const left=y>=layout.rows.find(r=>r.key==='gates').y?layout.gateLeft:layout.left;cursor=Math.max(0,Math.min(layout.range,(x-left)/(layout.width-left-layout.right)*layout.range));updateProbe();}
 
-$('rect-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('rect-flow-motion').setAttribute('aria-pressed',String(flowMoving));
-$('rect-flow-motion').addEventListener('click',()=>{flowMoving=!flowMoving;$('rect-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('rect-flow-motion').setAttribute('aria-pressed',String(flowMoving));syncSvgPlayback($('circuit-diagram'),flowMoving);});
-$('rect-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;pause();cursor=feedbackAngle;flowMoving=true;$('rect-flow-motion').textContent='Ⅱ 暂停流动';$('rect-flow-motion').setAttribute('aria-pressed','true');updateProbe();});
+function setFlowMotion(enabled){flowMoving=enabled;$('rect-flow-motion').textContent=enabled?'Ⅱ 暂停流动':'▶ 仅播放电流';$('rect-flow-motion').setAttribute('aria-pressed',String(enabled));syncSvgPlayback($('circuit-diagram'),enabled);}
+setFlowMotion(flowMoving);
+$('rect-flow-motion').addEventListener('click',()=>{if(flowMoving){pause();setFlowMotion(false);}else setFlowMotion(true);});
+$('rect-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;pause();cursor=feedbackAngle;setFlowMotion(true);updateProbe();});
 $('playback-speed').value=speed;
 initNav();
 $('alpha').addEventListener('pointerdown',()=>{adjustingAlpha=true;clearTimeout(switchTimer);});

@@ -217,7 +217,7 @@ function updateProbe(){
   $('dc-flow-direction').textContent=(s.power < -1e-8?(model.isCSI?'回馈时直流电流仍保持原方向，直流端电压改变极性。':`回馈：${s.active.filter(v=>v.startsWith('VD')).join('、')} 导通，电流流回直流正端。`):Math.abs(s.u)<1e-8&&adjustableBridge()?'桥内续流：电流在桥内闭合，直流端无电流。':'')+direction+'。';
   drawProbe();
 }
-function stop(){playing=false;playEpoch++;$('dc-play').textContent='▶ 播放';$('dc-play').setAttribute('aria-pressed','false');lastFrame=null;}
+function stop(){if(playing)setFlowMotion(false);playing=false;playEpoch++;$('dc-play').textContent='▶ 播放';$('dc-play').setAttribute('aria-pressed','false');lastFrame=null;}
 function frame(now,epoch){if(!playing||epoch!==playEpoch)return;if(lastFrame!==null)probe=advancePlayback(probe,now-lastFrame,speed,4000,cycles*360);lastFrame=now;if(now-lastProbeUpdate>70){updateProbe();lastProbeUpdate=now;}else drawProbe();requestAnimationFrame(next=>frame(next,epoch));}
 $('dc-circuit-select').addEventListener('change',e=>select(e.target.value));
 $('dc-reset').addEventListener('click',()=>{p=parameters(type,DEFAULTS[type]);saved.set(type,{...p});renderFields();recompute();writeUrl();});
@@ -225,9 +225,10 @@ $('dc-theta-range').addEventListener('input',e=>changeAngle('theta',e.target.val
 $('dc-pulse-range').addEventListener('input',e=>changeAngle('pulse',e.target.value));
 $('dc-theta-range').addEventListener('change',writeUrl);
 document.querySelectorAll('[data-theta]').forEach(b=>b.addEventListener('click',()=>changeAngle('theta',b.dataset.theta)));
-$('dc-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('dc-flow-motion').setAttribute('aria-pressed',String(flowMoving));
-$('dc-flow-motion').addEventListener('click',()=>{flowMoving=!flowMoving;$('dc-flow-motion').textContent=flowMoving?'Ⅱ 暂停流动':'▶ 开始流动';$('dc-flow-motion').setAttribute('aria-pressed',String(flowMoving));updateProbe();});
-$('dc-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;stop();probe=feedbackAngle;$('dc-show-flow').checked=true;flowMoving=true;$('dc-flow-motion').textContent='Ⅱ 暂停流动';$('dc-flow-motion').setAttribute('aria-pressed','true');updateProbe();writeUrl();});
+function setFlowMotion(enabled){flowMoving=enabled;$('dc-flow-motion').textContent=enabled?'Ⅱ 暂停流动':'▶ 仅播放电流';$('dc-flow-motion').setAttribute('aria-pressed',String(enabled));syncSvgPlayback($('dc-diagram'),enabled);syncSvgPlayback($('dc-zoom-diagram'),enabled);}
+setFlowMotion(flowMoving);
+$('dc-flow-motion').addEventListener('click',()=>{if(flowMoving){stop();setFlowMotion(false);updateProbe();}else setFlowMotion(true);});
+$('dc-see-feedback').addEventListener('click',()=>{if(feedbackAngle===null)return;stop();probe=feedbackAngle;$('dc-show-flow').checked=true;setFlowMotion(true);updateProbe();writeUrl();});
 $('dc-show-flow').addEventListener('change',()=>{updateProbe();writeUrl();});
 $('dc-show-gates').addEventListener('change',()=>{buildRows();drawChart();});$('dc-show-devices').addEventListener('change',()=>{buildRows();drawChart();});
 function setCycles(value){cycles=value;probe=Math.min(probe,cycles*360);$('dc-cycle-one').classList.toggle('selected',value===1);$('dc-cycle-two').classList.toggle('selected',value===2);$('dc-cycle-one').setAttribute('aria-pressed',value===1);$('dc-cycle-two').setAttribute('aria-pressed',value===2);drawChart();updateProbe();writeUrl();}
@@ -235,7 +236,7 @@ $('dc-cycle-one').addEventListener('click',()=>setCycles(1));$('dc-cycle-two').a
 $('dc-axis').addEventListener('click',()=>{timeAxis=!timeAxis;$('dc-axis').textContent=timeAxis?'横轴 t / ms ⇄':'横轴 ωt / ° ⇄';drawChart();updateProbe();writeUrl();});
 $('dc-cursor').addEventListener('input',e=>{stop();probe=Number(e.target.value);updateProbe();});$('dc-cursor').addEventListener('change',writeUrl);
 bindProbeGestures(canvas,{pause:stop,isPlaying:()=>playing,point:event=>{const r=canvas.getBoundingClientRect(),x=(event.clientX-r.left)*chartWidth/r.width;probe=Math.min(cycles*360,Math.max(0,(x-plot.left)/(plot.right-plot.left)*cycles*360));updateProbe();writeUrl();}});
-$('dc-play').addEventListener('click',()=>{if(playing)stop();else{playing=true;lastFrame=null;const epoch=++playEpoch;$('dc-play').textContent='Ⅱ 暂停';$('dc-play').setAttribute('aria-pressed','true');requestAnimationFrame(now=>frame(now,epoch));}});
+$('dc-play').addEventListener('click',()=>{if(playing){stop();updateProbe();}else{playing=true;setFlowMotion(true);lastFrame=null;const epoch=++playEpoch;$('dc-play').textContent='Ⅱ 暂停';$('dc-play').setAttribute('aria-pressed','true');requestAnimationFrame(now=>frame(now,epoch));}});
 $('dc-speed').addEventListener('change',event=>{speed=playbackRate(event.target.value);lastFrame=null;updateProbe();writeUrl();});
 $('dc-step').addEventListener('click',()=>{stop();const local=mod(probe),events=adjustableBridge()?[0,p.theta,180,180+p.theta,360]:type==='threeV'||type==='threeI'?[0,60,120,180,240,300,360]:[0,180,360];const next=events.find(a=>a>local+.05)??360;probe=(Math.floor(probe/360)*360+next+.1)%(cycles*360);updateProbe();writeUrl();});
 $('dc-zoom').addEventListener('click',()=>{zoomCircuitMarkup=circuitSVG(type,model.sample(probe),p,$('dc-show-flow').checked,speed);$('dc-zoom-diagram').innerHTML=zoomCircuitMarkup;$('dc-zoom-dialog').showModal();syncSvgPlayback($('dc-zoom-diagram'),flowMoving);});$('dc-close-zoom').addEventListener('click',()=>$('dc-zoom-dialog').close());

@@ -24,7 +24,7 @@ export function bindProbeGestures(canvas,{pause,point,isPlaying}){
       if(touch?.id===event.pointerId&&Math.hypot(event.clientX-touch.x,event.clientY-touch.y)>8)touch.moved=true;
       return;
     }
-    if(dragging||event.pointerType==='mouse'&&!isPlaying())point(event);
+    if(dragging)point(event);
   });
   canvas.addEventListener('pointerup',event=>{
     if(event.pointerType==='touch'){
@@ -38,8 +38,8 @@ export function bindProbeGestures(canvas,{pause,point,isPlaying}){
 }
 
 export function syncSvgPlayback(container,playing){
-  // Flow is an illustrative tracer at the selected instant, independent of
-  // waveform time. CSS motion keeps working when the waveform is paused.
+  // The page controller synchronizes explicit play/pause actions. A separate
+  // flow-only action can animate the selected instant without advancing time.
   container.setAttribute?.('data-flow-running',String(playing));
 }
 
@@ -49,7 +49,7 @@ export function renderFlowSegments(segments,rate=1,feedback=false){
     const last=points.at(-1),prev=points.at(-2),dx=last[0]-prev[0],dy=last[1]-prev[1],length=Math.hypot(dx,dy);
     const still=`translate(${last[0]-dx/length*7} ${last[1]-dy/length*7}) rotate(${Math.atan2(dy,dx)*180/Math.PI})`;
     const d=points.map(([x,y],k)=>(k?'L':'M')+x+' '+y).join(' ');
-    return `<g data-flow="${id}" data-flow-path="${d}" fill="none" stroke="${feedback?'#d65e19':color}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke-width="7" opacity="${/device|load-[RL]$|phase-load/.test(id)?0:.15}"/><path class="dc-flow-stream" d="${d}" stroke-width="6" stroke-dasharray="1 21"/><path class="dc-flow-direction" d="M-5 -4L1 0L-5 4" stroke-width="2.5" transform="${still}"/></g>`;
+    return `<g data-flow="${id}" data-flow-path="${d}" fill="none" stroke="${feedback?'#d65e19':color}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}" stroke-width="7" opacity="${/device|load-[RL]$|phase-load/.test(id)?0:.15}"/><path class="dc-flow-track" d="${d}" stroke-width="2.4" opacity="${/device|load-[RL]$|phase-load/.test(id)?0:1}"/><path class="dc-flow-stream" d="${d}" stroke-width="6" stroke-dasharray="1 21"/><path class="dc-flow-direction" d="M-5 -4L1 0L-5 4" stroke-width="2.5" transform="${still}"/></g>`;
   }).join('');
   return `<g class="dc-current-flow" data-flow-mode="${feedback?'feedback':'supply'}" style="--flow-duration:${duration}s" pointer-events="none" aria-hidden="true">${paths}</g>`;
 }
